@@ -1,0 +1,22 @@
+# Credentials and local account data
+auth.json
+*.token
+*.key
+*.pem
+.env
+.env.*
+
+# Local build and temporary files
+bin/
+obj/
+build/
+work/
+*.log
+*.tmp
+
+# IDE and OS metadata
+.vs/
+.vscode/
+*.user
+Thumbs.db
+Desktop.ini
