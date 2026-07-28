@@ -3,7 +3,7 @@ use chrono::Utc;
 use regex::Regex;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
@@ -460,11 +460,12 @@ fn table_names(connection: &Connection, schema: &str) -> Result<HashSet<String>,
             "SELECT name FROM {schema}.sqlite_master WHERE type='table'"
         ))
         .map_err(|error| error.to_string())?;
-    Ok(statement
+    let names = statement
         .query_map([], |row| row.get::<_, String>(0))
         .map_err(|error| error.to_string())?
         .filter_map(Result::ok)
-        .collect())
+        .collect();
+    Ok(names)
 }
 
 fn table_columns(
@@ -478,11 +479,12 @@ fn table_columns(
             quote_identifier(table)
         ))
         .map_err(|error| error.to_string())?;
-    Ok(statement
+    let columns = statement
         .query_map([], |row| row.get::<_, String>(1))
         .map_err(|error| error.to_string())?
         .filter_map(Result::ok)
-        .collect())
+        .collect();
+    Ok(columns)
 }
 
 fn merge_text_metadata(target: &Path, backup_bytes: &[u8], name: &str) -> Result<usize, String> {

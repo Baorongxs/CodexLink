@@ -135,7 +135,11 @@ pub async fn start_injection(app: &AppHandle, debug_port: u16) -> Result<(), Str
 
 pub async fn stop_injection(app: &AppHandle) {
     let state = app.state::<AppState>();
-    if let Some(client) = state.cdp.lock().await.take() {
+    let client = {
+        let mut guard = state.cdp.lock().await;
+        guard.take()
+    };
+    if let Some(client) = client {
         client.close();
     }
 }
