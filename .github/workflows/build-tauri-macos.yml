@@ -1,0 +1,97 @@
+name: Build Tauri macOS DMG
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/build-tauri-mac-v1.0.22
+    paths:
+      - "tauri/**"
+      - ".github/workflows/build-tauri-macos.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: arm64
+            binary_arch: arm64
+          - target: x86_64-apple-darwin
+            arch: x64
+            binary_arch: x86_64
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+          key: ${{ matrix.target }}
+      - run: npm ci
+      - name: Build app bundle
+        run: npm run tauri -- build --target "${{ matrix.target }}" --bundles app
+      - name: Ad-hoc sign and package DMG
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCH_NAME: ${{ matrix.arch }}
+          BINARY_ARCH: ${{ matrix.binary_arch }}
+        run: |
+          set -euo pipefail
+          app="src-tauri/target/${TARGET}/release/bundle/macos/CodexLink.app"
+          test -d "$app"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          file "$app/Contents/MacOS/CodexLink"
+          lipo -archs "$app/Contents/MacOS/CodexLink" | grep -qw "$BINARY_ARCH"
+          stage="$(mktemp -d)"
+          cp -R "$app" "$stage/CodexLink.app"
+          ln -s /Applications "$stage/Applications"
+          dmg="2026-07-28_CodexLink_macOS_Tauri_${ARCH_NAME}_v1.0.22.dmg"
+          hdiutil create -volname "CodexLink" -srcfolder "$stage" -ov -format UDZO "$dmg"
+          hdiutil verify "$dmg"
+          mount="$(mktemp -d)"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount"
+          test -d "$mount/CodexLink.app"
+          test -L "$mount/Applications"
+          hdiutil detach "$mount"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+          du -h "$dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CodexLink-macOS-Tauri-${{ matrix.arch }}-v1.0.22
+          path: |
+            tauri/2026-07-28_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.22.dmg
+            tauri/2026-07-28_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.22.dmg.sha256
+          if-no-files-found: error
+          retention-days: 14

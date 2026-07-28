@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CodexLink",
+  "version": "1.0.22",
+  "identifier": "top.baorongxs.codexlink",
+  "build": {
+    "frontendDist": "../frontend"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "CodexLink macOS",
+        "url": "index.html",
+        "width": 480,
+        "height": 760,
+        "minWidth": 420,
+        "minHeight": 620,
+        "center": true,
+        "decorations": false,
+        "resizable": true,
+        "backgroundColor": "#eef3f9"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/128x128.png",
+      "icons/icon.icns"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "dmg": {
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 210
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 210
+        }
+      }
+    }
+  }
+}

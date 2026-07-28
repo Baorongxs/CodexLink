@@ -1,0 +1,47 @@
+[package]
+name = "codexlink"
+version = "1.0.22"
+description = "CodexLink macOS launcher, account, payment and conversation utility"
+authors = ["CodexLink"]
+edition = "2021"
+
+[lib]
+name = "codexlink_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "CodexLink"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+base64 = "0.22"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+dirs = "6"
+futures-util = "0.3"
+open = "5"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+rfd = "0.15"
+rusqlite = { version = "0.32", features = ["bundled"] }
+security-framework = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+zip = "0.6"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

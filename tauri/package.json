@@ -1,0 +1,13 @@
+{
+  "name": "codexlink-tauri",
+  "version": "1.0.22",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "build:mac": "tauri build --bundles dmg",
+    "test": "node tests/verify.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

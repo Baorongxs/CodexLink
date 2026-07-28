@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CodexLink 安全支付</title>
+  <style>
+    body { margin: 0; padding: 32px; font: 15px -apple-system, BlinkMacSystemFont, sans-serif; color: #243247; background: #f5f8fc; }
+    .card { max-width: 520px; margin: 80px auto; padding: 26px; text-align: center; background: white; border-radius: 18px; box-shadow: 0 16px 50px rgba(30, 55, 90, .12); }
+  </style>
+</head>
+<body>
+  <div class="card">正在安全打开付款页面…</div>
+  <script>
+    (() => {
+      const payment = window.__TAURI_PAYMENT__ || {};
+      if (!/^https?:\/\//i.test(String(payment.url || ''))) {
+        document.querySelector('.card').textContent = '付款页面地址无效。';
+        return;
+      }
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = payment.url;
+      for (const [key, value] of Object.entries(payment.fields || {})) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = String(value == null ? '' : value);
+        form.appendChild(input);
+      }
+      document.body.appendChild(form);
+      form.submit();
+    })();
+  </script>
+</body>
+</html>
