@@ -6,11 +6,15 @@ on:
     branches:
       - codex/build-tauri-mac-v1.0.22
     paths:
-      - "tauri/**"
+      - "tauri/frontend/**"
+      - "tauri/src-tauri/**"
+      - "tauri/tests/**"
+      - "tauri/package.json"
+      - "tauri/package-lock.json"
       - ".github/workflows/build-tauri-macos.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -95,3 +99,25 @@ jobs:
             tauri/2026-07-28_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.22.dmg.sha256
           if-no-files-found: error
           retention-days: 14
+
+  collect:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/build-tauri-mac-v1.0.22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: CodexLink-macOS-Tauri-*-v1.0.22
+          path: tauri/dist
+          merge-multiple: true
+      - name: Commit verified installers to build branch
+        run: |
+          set -euo pipefail
+          ls -lh tauri/dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f tauri/dist/*.dmg tauri/dist/*.sha256
+          git commit -m "build(mac): collect verified DMGs [skip ci]"
+          git push origin HEAD:codex/build-tauri-mac-v1.0.22
