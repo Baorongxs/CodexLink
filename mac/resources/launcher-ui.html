@@ -1,0 +1,1979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CodexLink</title>
+  <style>
+    :root {
+      --bg: #eef3f9;
+      --card: rgba(255,255,255,.94);
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: rgba(15,23,42,.10);
+      --blue: #0067b8;
+      --blue-dark: #0b4f86;
+      --ok: #059669;
+      --err: #e11d48;
+      --shadow: 0 10px 28px rgba(15,23,42,.08);
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body {
+      margin: 0; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; user-select: none;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible {
+      outline: 2px solid rgba(0,103,184,.55); outline-offset: 2px;
+    }
+    .content, .modal-body, .route-menu, .update-notes, .log {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(100,116,139,.42) transparent;
+    }
+    .content::-webkit-scrollbar, .modal-body::-webkit-scrollbar,
+    .route-menu::-webkit-scrollbar, .update-notes::-webkit-scrollbar,
+    .log::-webkit-scrollbar { width: 7px; height: 7px; }
+    .content::-webkit-scrollbar-track, .modal-body::-webkit-scrollbar-track,
+    .route-menu::-webkit-scrollbar-track, .update-notes::-webkit-scrollbar-track,
+    .log::-webkit-scrollbar-track { background: transparent; }
+    .content::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb,
+    .route-menu::-webkit-scrollbar-thumb, .update-notes::-webkit-scrollbar-thumb,
+    .log::-webkit-scrollbar-thumb {
+      background: rgba(100,116,139,.36); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box;
+    }
+    .app {
+      width: 100%; height: 100%; height: 100dvh; min-height: 0;
+      display: grid; grid-template-rows: 44px minmax(0, 1fr) 48px;
+      background: var(--bg);
+      border-radius: 0;
+      overflow: hidden;
+      border: none;
+      box-shadow: none;
+    }
+    .titlebar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px 0 16px; background: rgba(255,255,255,.82);
+      border-bottom: 1px solid var(--line); backdrop-filter: blur(10px);
+      border-radius: 0;
+      -webkit-app-region: drag;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark { width: 22px; height: 22px; border-radius: 7px; overflow: hidden; background: #dbeafe; }
+    .brand-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .brand-title { font-weight: 700; font-size: 13px; white-space: nowrap; display:inline-flex; align-items:center; gap:8px; }
+    .app-version {
+      display:inline-flex; align-items:center; height:20px; padding:0 8px; border-radius:999px;
+      border:1px solid rgba(0,103,184,.18); background:rgba(255,255,255,.9);
+      color:#0b4f86; font-size:11px; font-weight:800; letter-spacing:.02em; cursor:pointer;
+    }
+    .app-version:hover { background:#f0f7ff; border-color:rgba(0,103,184,.34); }
+    .window-controls { display: flex; gap: 4px; }
+    .window-controls, .window-button, .app-version { -webkit-app-region: no-drag; }
+    .window-button {
+      width: 34px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #475569;
+      display: grid; place-items: center;
+    }
+    .window-button:hover { background: rgba(148,163,184,.18); }
+    .window-button.close:hover { background: #e11d48; color: #fff; }
+    .window-button svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+
+    .content {
+      padding: clamp(12px, 2.2vw, 18px);
+      overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable;
+      display: grid;
+      gap: clamp(10px, 1.6vw, 14px);
+      align-content: start;
+      min-height: 0;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: clamp(16px, 2.2vw, 20px);
+      box-shadow: var(--shadow);
+      padding: clamp(12px, 2vw, 16px);
+      min-width: 0;
+    }
+    .card-head {
+      display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;
+      min-width: 0;
+    }
+    .card-head h2 { margin: 0; font-size: 14px; font-weight: 800; }
+    .card-title-row {
+      display: flex; align-items: center; gap: 7px; min-width: 0;
+    }
+    .card-head-actions {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end;
+    }
+    .card-head-tools {
+      display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex: 0 0 auto;
+    }
+    .tool-group-divider {
+      width: 1px; height: 18px; margin: 0 2px; flex: 0 0 auto;
+      background: rgba(100,116,139,.24); border-radius: 999px;
+    }
+    .head-btn {
+      height: 28px; min-width: 52px; padding: 0 10px; border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.10); background: #fff; color: #334155;
+      font-size: 12px; font-weight: 700;
+    }
+    .head-btn:hover { background: #f8fafc; border-color: rgba(15,23,42,.16); }
+    .head-btn:disabled { opacity: .5; pointer-events: none; }
+    .head-btn.primary {
+      background: linear-gradient(180deg, #0b78c9, var(--blue)); color: #fff; border-color: transparent;
+    }
+    .head-btn.primary:hover { filter: brightness(1.05); }
+    .head-btn.danger {
+      color: #be123c; border-color: rgba(225,29,72,.16); background: #fff7f8;
+    }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+      background: #eff6ff; color: var(--blue-dark); font-weight: 700; font-size: 12px;
+      white-space: nowrap;
+    }
+    .status-pill.ok { background: #ecfdf5; color: #047857; }
+    .status-pill.err { background: #fff1f2; color: #be123c; }
+    .codex-head { flex-wrap: nowrap; }
+    .codex-head .status-pill { padding: 3px 9px; font-size: 11px; }
+    .tool-icon-btn {
+      position: relative; width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto;
+      padding: 0; border-radius: 9px; border: 1px solid rgba(15,23,42,.10);
+      background: #fff; color: var(--blue-dark); box-shadow: 0 1px 0 rgba(15,23,42,.03);
+    }
+    .tool-icon-btn:hover, .tool-icon-btn:focus-visible {
+      background: #f0f7ff; border-color: rgba(0,103,184,.28); color: #0067b8;
+    }
+    .tool-icon-btn:disabled { opacity: .48; pointer-events: none; }
+    .tool-icon-btn.busy svg { animation: spin .9s linear infinite; }
+    .tool-icon-btn svg {
+      width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.9;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .tool-icon-btn::after {
+      content: attr(data-tooltip); position: absolute; right: 0; top: calc(100% + 7px); z-index: 45;
+      padding: 5px 8px; border-radius: 7px; background: rgba(15,23,42,.94); color: #fff;
+      font-size: 11px; font-weight: 700; line-height: 1.2; white-space: nowrap;
+      opacity: 0; visibility: hidden; transform: translateY(-3px); pointer-events: none;
+      transition: opacity .14s ease, transform .14s ease, visibility .14s ease;
+      box-shadow: 0 6px 16px rgba(15,23,42,.16);
+    }
+    .tool-icon-btn:hover::after, .tool-icon-btn:focus-visible::after {
+      opacity: 1; visibility: visible; transform: translateY(0);
+    }
+    .tool-menu-wrap { position: relative; display: flex; align-items: center; }
+    .tool-menu-wrap .tool-icon-btn[aria-expanded="true"] {
+      background: #e8f3ff; border-color: rgba(0,103,184,.32); color: #0067b8;
+    }
+    .tool-menu-wrap:hover > .tool-icon-btn {
+      background: #e8f3ff; border-color: rgba(0,103,184,.32); color: #0067b8;
+    }
+    .tool-menu-wrap .tool-icon-btn[aria-expanded="true"]::after,
+    .tool-menu-wrap:hover > .tool-icon-btn::after {
+      opacity: 0; visibility: hidden;
+    }
+    .tool-menu {
+      position: absolute; right: 0; bottom: calc(100% + 9px); z-index: 55;
+      width: min(244px, calc(100vw - 38px)); padding: 8px;
+      border: 1px solid rgba(15,23,42,.12); border-radius: 16px;
+      background: rgba(255,255,255,.98); box-shadow: 0 18px 44px rgba(15,23,42,.18);
+      opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(5px) scale(.98);
+      transform-origin: right bottom; transition: opacity .14s ease, transform .14s ease, visibility .14s ease;
+    }
+    .files-menu { width: min(226px, calc(100vw - 38px)); }
+    .tool-menu.open,
+    .tool-menu-wrap:hover > .tool-menu {
+      opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0) scale(1);
+    }
+    .tool-icon-btn:disabled + .tool-menu {
+      opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;
+    }
+    .tool-menu::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 12px;
+    }
+    .tool-menu::after {
+      content: ""; position: absolute; right: 10px; top: 100%; width: 10px; height: 10px;
+      background: #fff; border-right: 1px solid rgba(15,23,42,.12); border-bottom: 1px solid rgba(15,23,42,.12);
+      transform: translateY(-5px) rotate(45deg);
+    }
+    .tool-menu-title { padding: 4px 7px 7px; color: #64748b; font-size: 11px; font-weight: 800; }
+    .tool-menu-action {
+      position: relative; z-index: 1; width: 100%; min-height: 50px; padding: 8px 9px;
+      display: grid; grid-template-columns: 32px minmax(0,1fr); align-items: center; column-gap: 9px;
+      border: 0; border-radius: 11px; background: transparent; color: #0f172a; text-align: left;
+    }
+    .tool-menu-action:hover, .tool-menu-action:focus-visible { background: #eef6ff; }
+    .tool-menu-action:disabled { opacity: .48; pointer-events: none; }
+    .tool-menu-action .menu-icon {
+      width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+      color: var(--blue-dark); background: #e8f3ff;
+    }
+    .tool-menu-action .menu-icon svg {
+      width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .tool-menu-action .menu-copy { min-width: 0; display: grid; gap: 1px; }
+    .tool-menu-action .menu-label { font-size: 12px; font-weight: 800; }
+    .tool-menu-action .menu-hint { color: #64748b; font-size: 10px; font-weight: 600; line-height: 1.3; }
+    .user-pill {
+      display: inline-flex; align-items: center; max-width: min(180px, 34vw);
+      height: 28px; padding: 0 12px; border-radius: 999px;
+      border: 1px solid rgba(0,103,184,.18);
+      background: #fff;
+      color: #0b4f86;
+      font-weight: 800; font-size: 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      box-shadow: 0 1px 0 rgba(15,23,42,.03);
+    }
+    .user-pill.is-empty {
+      color: var(--muted); font-weight: 700; border-color: rgba(15,23,42,.10); background: #f8fafc;
+    }
+    .login-state-pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 28px; min-width: 72px; padding: 0 12px; border-radius: 999px;
+      border: 1px solid rgba(0,103,184,.22);
+      background: #fff;
+      color: var(--blue-dark);
+      font-weight: 800; font-size: 12px;
+      white-space: nowrap;
+    }
+    .login-state-pill.ok {
+      border-color: rgba(4,120,87,.22);
+      background: #ecfdf5;
+      color: #047857;
+    }
+    .login-state-pill.err {
+      border-color: rgba(190,18,60,.18);
+      background: #fff1f2;
+      color: #be123c;
+    }
+
+    .balance-box {
+      display: flex; flex-direction: row; flex-wrap: nowrap;
+      align-items: center; justify-content: space-between; gap: 12px;
+      padding: clamp(12px, 2vw, 16px);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #f8fbff, #eef6ff);
+      border: 1px solid rgba(0,103,184,.12);
+      min-width: 0;
+    }
+    .balance-main {
+      min-width: 0; flex: 1 1 auto; overflow: hidden;
+    }
+    .balance-label-row {
+      display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700;
+    }
+    .icon-btn {
+      width: 24px; height: 24px; border: 0; border-radius: 999px; background: transparent;
+      color: var(--blue-dark); display: grid; place-items: center; padding: 0;
+    }
+    .icon-btn:hover { background: rgba(0,103,184,.10); }
+    .icon-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-btn.spinning svg { animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .balance-box .v {
+      margin-top: 4px; font-size: clamp(28px, 5.2vw, 36px); font-weight: 800; letter-spacing: -.03em; color: #0b4f86;
+    }
+    .balance-side {
+      display: grid; justify-items: end; align-content: center; gap: 8px;
+      flex: 0 0 auto; flex-shrink: 0;
+      width: auto; min-width: 72px;
+    }
+    .balance-side .login-state-pill,
+    .balance-side .btn.soft {
+      width: 72px;
+      min-width: 72px;
+      max-width: 72px;
+      justify-self: end;
+    }
+
+    .btn {
+      height: 36px; min-width: 88px; padding: 0 14px; border-radius: 11px;
+      border: 1px solid rgba(15,23,42,.12); background: #fff; color: #0f172a; font-weight: 700;
+    }
+    .btn:hover { background: #f8fafc; }
+    .btn:disabled { opacity: .55; pointer-events: none; }
+    .btn.primary {
+      background: linear-gradient(180deg, #0b78c9, var(--blue)); color: #fff; border-color: transparent;
+    }
+    .btn.primary:hover { filter: brightness(1.05); }
+    .btn.soft {
+      height: 32px; min-width: 72px; border-radius: 999px;
+      background: #fff; color: var(--blue-dark); border-color: rgba(0,103,184,.22);
+    }
+    .btn.soft:hover { background: #f0f7ff; }
+
+    .setup-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(8px, 1.4vw, 12px);
+      width: 100%;
+    }
+    .setup-item {
+      border: 0;
+      border-radius: 16px;
+      padding: clamp(12px, 2vw, 16px) 8px;
+      text-align: center;
+      min-height: clamp(84px, 14vw, 100px);
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: #0f3d6b;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 4px 14px rgba(15,23,42,.06);
+      transition: transform .08s ease, filter .15s ease, box-shadow .15s ease;
+    }
+    .setup-item:hover { filter: brightness(1.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 8px 18px rgba(15,23,42,.10); }
+    .setup-item:active { transform: scale(.98); }
+    .setup-item .ico {
+      width: 28px; height: 28px; display: grid; place-items: center;
+    }
+    .setup-item .ico svg {
+      width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .setup-item .name {
+      font-size: clamp(11px, 2.1vw, 13px); font-weight: 800; line-height: 1.3; word-break: break-word;
+    }
+    /* light -> deep */
+    .setup-item.tone-1,
+    .setup-item.tone-2,
+    .setup-item.tone-3 {
+      background: linear-gradient(160deg, #cfe6ff 0%, #8fc4f5 100%);
+      color: #0a3f6d;
+    }
+    .setup-item.running { outline: 2px solid rgba(11,78,201,.35); outline-offset: 1px; }
+    .setup-item.success { outline: 2px solid rgba(5,150,105,.45); outline-offset: 1px; }
+    .setup-item.error { outline: 2px solid rgba(225,29,72,.4); outline-offset: 1px; }
+    .setup-progress {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,103,184,.14);
+      background: #f5faff;
+      display: none;
+    }
+    .setup-progress.show { display: block; }
+    .setup-progress-top {
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      margin-bottom: 8px;
+    }
+    .setup-progress-label {
+      color: #0b4f86; font-weight: 800; font-size: 12px; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .setup-progress-pct {
+      color: #0b4f86; font-weight: 800; font-size: 12px; flex: 0 0 auto;
+    }
+    .setup-progress-track {
+      height: 8px; border-radius: 999px; background: rgba(148,163,184,.28); overflow: hidden;
+    }
+    .setup-progress-fill {
+      height: 100%; width: 0%; border-radius: inherit;
+      background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+      transition: width .2s ease;
+    }
+    .setup-progress.indeterminate .setup-progress-fill {
+      width: 35% !important;
+      animation: setup-indet 1.1s ease-in-out infinite;
+    }
+    @keyframes setup-indet {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(320%); }
+    }
+    .setup-progress-meta {
+      margin-top: 6px; color: var(--muted); font-size: 11px; font-weight: 600; min-height: 16px;
+    }
+
+
+
+    .route-select-wrap { position: relative; width: 100%; }
+    .route-head-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+    .official-switch {
+      height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 9px;
+      border: 1px solid rgba(15,23,42,.10); border-radius: 999px; background: #fff;
+      color: #334155; font-size: 12px; font-weight: 800; user-select: none;
+    }
+    .official-switch-text { line-height: 1; white-space: nowrap; }
+    .official-switch input { position: absolute; opacity: 0; pointer-events: none; }
+    .official-switch-track {
+      width: 28px; height: 16px; border-radius: 999px; padding: 2px; background: #cbd5e1;
+      display: inline-flex; align-items: center; transition: background .16s ease;
+    }
+    .official-switch-track::after {
+      content: ''; width: 12px; height: 12px; border-radius: 50%; background: #fff;
+      box-shadow: 0 1px 3px rgba(15,23,42,.28); transition: transform .16s ease;
+    }
+    .official-switch input:checked + .official-switch-track { background: var(--blue); }
+    .official-switch input:checked + .official-switch-track::after { transform: translateX(12px); }
+    .official-switch:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+    .route-icon-btn {
+      width: 28px; height: 28px; padding: 0; display: inline-grid; place-items: center;
+      border: 1px solid rgba(225,29,72,.16); border-radius: 50%; background: #fff7f8; color: #be123c;
+    }
+    .route-icon-btn:hover { background: #ffecef; border-color: rgba(225,29,72,.28); }
+    .route-icon-btn.import {
+      color: var(--blue); border-color: rgba(0,103,184,.16); background: #f2f8ff;
+    }
+    .route-icon-btn.import:hover { background: #e8f3ff; border-color: rgba(0,103,184,.28); }
+    .route-icon-btn:disabled { opacity: .5; pointer-events: none; }
+    .route-icon-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .route-select-btn {
+      width: 100%;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,.12);
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 12px;
+      font-weight: 700;
+      color: #0f172a;
+      text-align: left;
+      box-shadow: 0 2px 8px rgba(15,23,42,.04);
+    }
+    .route-select-btn:hover { border-color: rgba(0,103,184,.28); background: #f8fbff; }
+    .route-select-btn.open {
+      border-color: rgba(0,103,184,.35);
+      background: #f5faff;
+      box-shadow: 0 0 0 3px rgba(0,103,184,.10);
+    }
+    .route-select-btn:disabled { opacity: .55; pointer-events: none; }
+    .route-select-btn .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+    .route-select-btn .chev {
+      width: 18px; height: 18px; flex: 0 0 auto; color: #64748b; display: grid; place-items: center;
+      transition: transform .15s ease;
+    }
+    .route-select-btn .chev svg {
+      width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .route-select-btn.open .chev { transform: rotate(180deg); color: #0b4f86; }
+    .route-menu {
+      display: none;
+      position: absolute;
+      left: 0; right: 0;
+      top: calc(100% + 6px);
+      max-height: min(220px, 40dvh);
+      overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+      background: #ffffff;
+      color: #0f172a;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,.10);
+      box-shadow: 0 12px 30px rgba(15,23,42,.12);
+      padding: 6px;
+      z-index: 30;
+    }
+    .route-menu.open { display: block; }
+    .route-option {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #0f172a;
+      text-align: left;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .route-option:hover { background: #f1f7ff; color: #0b4f86; }
+    .route-option.active {
+      background: linear-gradient(180deg, #eaf4ff 0%, #d7ebff 100%);
+      color: #0b4f86;
+      box-shadow: inset 0 0 0 1px rgba(0,103,184,.14);
+    }
+    .route-option:disabled { opacity: .6; }
+    .route-option .check { width: 16px; height: 16px; opacity: 0; display: grid; place-items: center; }
+    .route-option.active .check { opacity: 1; }
+    .route-option .check svg {
+      width: 16px; height: 16px; stroke: #0b78c9; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .route-empty {
+      color: #64748b;
+      font-size: 12px;
+      text-align: center;
+      padding: 12px;
+    }
+    .codex-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .codex-actions .btn { height: 42px; font-size: 14px; width: 100%; }
+    .meta {
+      margin-top: 10px; color: var(--muted); font-size: 12px; min-height: 18px;
+    }
+
+    .footer {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 0 16px; border-top: 1px solid var(--line); background: rgba(255,255,255,.82);
+      border-radius: 0; min-width: 0;
+    }
+    .footer-actions {
+      display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap;
+    }
+    .footer-tools {
+      display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: nowrap;
+    }
+    .footer-btn {
+      height: 32px; min-width: 72px; padding: 0 14px; border-radius: 999px;
+      border: 1px solid rgba(0,103,184,.22);
+      background: #fff; color: var(--blue-dark); font-weight: 800;
+      box-shadow: 0 1px 0 rgba(15,23,42,.03);
+    }
+    .footer-btn:hover { background: #f0f7ff; border-color: rgba(0,103,184,.32); }
+    .footer-icon-btn {
+      width: 34px; min-width: 34px; padding: 0; border-radius: 8px;
+      display: inline-grid; place-items: center;
+    }
+    .footer-icon-btn svg {
+      width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9;
+      stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
+    }
+    .footer-guide-btn { min-width: 72px; }
+    .support-qr-wrap {
+      display: grid; justify-items: center; gap: 10px; padding: 8px 0 4px;
+    }
+    .support-qr-wrap img {
+      width: min(240px, 70vw); height: auto; border-radius: 14px;
+      border: 1px solid rgba(15,23,42,.10); background: #fff;
+      box-shadow: 0 8px 24px rgba(15,23,42,.08);
+    }
+    .support-qr-tip {
+      color: var(--muted); font-size: 12px; font-weight: 700; text-align: center;
+    }
+
+    .backdrop {
+      position: fixed; inset: 0; background: rgba(15,23,42,.38); display: none;
+      align-items: center; justify-content: center; z-index: 50;
+      min-width: 0; min-height: 0; overflow: hidden; padding: clamp(10px, 3vw, 22px);
+    }
+    .backdrop.open { display: flex; }
+    .modal {
+      width: min(480px, 100%); max-width: 100%; max-height: min(calc(100vh - 20px), 720px);
+      max-height: min(calc(100dvh - 20px), 720px); min-height: 0;
+      display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+      background: #fff; border-radius: 20px; border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .modal.login-modal { grid-template-rows: auto minmax(0, 1fr) auto; max-height: min(calc(100dvh - 20px), 760px); }
+    .modal.choice-modal { width: min(420px, 100%); }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      min-width: 0; flex: 0 0 auto; padding: 12px 14px; border-bottom: 1px solid var(--line); background: #fff;
+    }
+    .modal-head h3 { margin: 0; font-size: 14px; }
+    .modal-close {
+      width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; font-size: 18px; color: #64748b;
+    }
+    .modal-close:hover { background: #f1f5f9; }
+    .modal-body {
+      min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto;
+      overscroll-behavior: contain; touch-action: pan-y; scrollbar-gutter: stable; padding: 14px;
+    }
+    .modal-foot {
+      display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex: 0 0 auto;
+      padding: 10px 14px; border-top: 1px solid var(--line); background: #fff; z-index: 2;
+    }
+    .choice-list { display: grid; gap: 10px; }
+    .choice-btn {
+      width: 100%; min-height: 64px; border-radius: 12px; border: 1px solid var(--line);
+      background: #fff; text-align: left; padding: 12px 14px; display: grid; gap: 4px;
+    }
+    .choice-btn:hover { border-color: rgba(0,103,184,.28); background: #f7fbff; }
+    .choice-btn strong { font-size: 14px; color: var(--text); }
+    .choice-btn span { font-size: 12px; color: var(--muted); }
+    .topup-modal { width: min(520px, 100%); }
+    .topup-loading, .topup-empty {
+      min-height: 180px; display: grid; place-items: center; text-align: center;
+      color: var(--muted); font-weight: 700;
+    }
+    .topup-form { display: grid; gap: 18px; }
+    .topup-section { display: grid; gap: 9px; }
+    .topup-label { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .topup-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .topup-preset {
+      min-width: 0; min-height: 56px; padding: 8px 10px; border-radius: 10px;
+      border: 1px solid rgba(15,23,42,.13); background: #fff; color: var(--text);
+      display: grid; align-content: center; justify-items: start; gap: 2px; text-align: left;
+    }
+    .topup-preset strong { font-size: 14px; }
+    .topup-preset span { color: var(--muted); font-size: 11px; }
+    .topup-preset:hover, .topup-preset.active {
+      border-color: rgba(0,103,184,.48); background: #f0f7ff; box-shadow: 0 0 0 2px rgba(0,103,184,.08);
+    }
+    .topup-custom { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .topup-custom input {
+      width: 100%; min-width: 0; height: 40px; padding: 0 12px; border-radius: 10px;
+      border: 1px solid rgba(15,23,42,.14); background: #fff; color: var(--text); outline: none;
+    }
+    .topup-custom input:focus { border-color: rgba(0,103,184,.45); box-shadow: 0 0 0 3px rgba(0,103,184,.12); }
+    .topup-payable {
+      min-width: 128px; height: 40px; padding: 0 12px; border-radius: 10px;
+      border: 1px solid rgba(15,23,42,.10); background: #f8fafc;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      color: var(--muted); font-size: 11px; white-space: nowrap;
+    }
+    .topup-payable strong { color: var(--text); font-size: 13px; }
+    .topup-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .topup-method {
+      min-width: 0; min-height: 48px; padding: 8px 11px; border-radius: 10px;
+      border: 1px solid rgba(15,23,42,.13); background: #fff; color: var(--text);
+      display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; text-align: left;
+    }
+    .topup-method:hover, .topup-method.active { border-color: rgba(0,103,184,.48); background: #f0f7ff; }
+    .topup-method-icon {
+      width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+      background: #e8f3ff; color: var(--blue); font-size: 12px; font-weight: 900;
+    }
+    .topup-method-copy { min-width: 0; display: grid; gap: 1px; }
+    .topup-method-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    .topup-method-copy span { color: var(--muted); font-size: 10px; }
+    .topup-note { color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .update-modal { width: min(430px, 100%); }
+    .update-summary { display: grid; gap: 10px; }
+    .update-version { color: var(--text); font-size: 14px; font-weight: 800; line-height: 1.55; }
+    .update-notes {
+      min-height: 56px; max-height: min(220px, 35dvh); overflow: auto; white-space: pre-line; word-break: break-word;
+      padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line);
+      background: #f8fafc; color: #475569; font-size: 12px; line-height: 1.65;
+    }
+    .update-source { color: var(--muted); font-size: 11px; }
+
+    .row { display: grid; gap: 6px; margin-bottom: 12px; }
+    .row:last-child { margin-bottom: 0; }
+    .row label { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .row input {
+      width: 100%; min-width: 0; height: 38px; border-radius: 11px; border: 1px solid rgba(15,23,42,.14);
+      padding: 0 12px; outline: none; background: #fff; color: var(--text);
+    }
+    .inline-field-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .inline-field-action .btn { height: 38px; min-width: 108px; }
+    .row input:focus { border-color: rgba(0,103,184,.45); box-shadow: 0 0 0 3px rgba(0,103,184,.12); }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .log {
+      height: clamp(170px, 42dvh, 360px); min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+      border-radius: 12px; border: 1px solid var(--line);
+      background: #0b1220; color: #dbeafe; padding: 10px 12px; font: 12px/1.45 ui-monospace, Consolas, monospace;
+    }
+    .log .line { margin: 0 0 4px; white-space: pre-wrap; word-break: break-word; }
+    .log .err { color: #fda4af; }
+    .log .ok { color: #6ee7b7; }
+
+    .toast-stack { position: fixed; right: 14px; bottom: 14px; display: grid; gap: 8px; z-index: 60; pointer-events: none; }
+    .toast {
+      min-width: 160px; max-width: 300px; padding: 10px 12px; border-radius: 12px;
+      background: rgba(15,23,42,.92); color: #fff; box-shadow: var(--shadow); font-weight: 600;
+    }
+    .toast.error { background: rgba(190,18,60,.95); }
+
+    @media (max-width: 460px) {
+      .app { grid-template-rows: 42px minmax(0, 1fr) auto; }
+      .titlebar { padding-left: 12px; padding-right: 6px; }
+      .content { padding: 10px; gap: 10px; }
+      .card { padding: 12px; border-radius: 15px; }
+      .codex-actions { grid-template-columns: 1fr; }
+      .balance-box { flex-direction: row; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 12px; }
+      .balance-side { width: 68px; min-width: 68px; justify-items: end; flex-shrink: 0; }
+      .balance-side .login-state-pill,
+      .balance-side .btn.soft { width: 68px; min-width: 68px; max-width: 68px; padding-left: 8px; padding-right: 8px; }
+      .card-head { flex-wrap: wrap; }
+      .card-head.codex-head { flex-wrap: nowrap; }
+      .balance-box .v { font-size: 26px; }
+      .footer { min-height: 46px; height: auto; padding: 6px 10px; gap: 6px; }
+      .footer-tools { gap: 6px; }
+      .footer-actions { margin-left: auto; flex-wrap: nowrap; gap: 6px; }
+      .footer-btn { height: 32px; min-width: 62px; padding: 0 10px; }
+      .backdrop { padding: 8px; }
+      .modal, .modal.login-modal { max-height: calc(100dvh - 16px); border-radius: 16px; }
+      .modal-body { padding: 12px; }
+      .modal-head { padding: 10px 12px; }
+      .modal-foot { padding: 9px 12px; }
+      .topup-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .topup-methods { grid-template-columns: 1fr; }
+      .topup-custom { grid-template-columns: 1fr; }
+      .topup-payable { width: 100%; }
+      .toast-stack { left: 8px; right: 8px; bottom: 8px; }
+      .toast { width: fit-content; max-width: 100%; justify-self: end; }
+    }
+
+    @media (max-width: 350px) {
+      .brand { gap: 7px; }
+      .brand-title { gap: 5px; }
+      .app-version { padding: 0 6px; }
+      .window-controls { gap: 0; }
+      .window-button { width: 30px; }
+      .setup-grid { grid-template-columns: 1fr; }
+      .setup-item { min-height: 66px; grid-template-columns: auto 1fr; justify-items: start; text-align: left; padding: 10px 14px; }
+      .setup-item .name { font-size: 12px; }
+      .card-head.codex-head { gap: 5px; }
+      .codex-head .card-title-row { flex: 1 1 auto; min-width: 0; gap: 4px; }
+      .codex-head .status-pill {
+        max-width: 58px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .codex-head .card-head-tools { gap: 3px; }
+      .codex-head .tool-icon-btn { width: 26px; height: 26px; }
+      .codex-head .tool-icon-btn svg { width: 14px; height: 14px; }
+      .codex-head .tool-group-divider { height: 16px; margin: 0 1px; }
+      .footer-btn { min-width: 56px; padding: 0 8px; }
+      .inline-field-action .btn { min-width: 94px; padding-left: 8px; padding-right: 8px; }
+      .modal-foot .btn { min-width: 0; flex: 1 1 0; }
+    }
+
+    @media (max-height: 620px) {
+      .content { padding-top: 8px; padding-bottom: 8px; gap: 8px; }
+      .card { padding-top: 10px; padding-bottom: 10px; }
+      .card-head { margin-bottom: 8px; }
+      .setup-item { min-height: 64px; padding-top: 8px; padding-bottom: 8px; gap: 5px; }
+      .balance-box { padding-top: 10px; padding-bottom: 10px; }
+      .backdrop { padding: 6px; }
+      .modal, .modal.login-modal { max-height: calc(100dvh - 12px); border-radius: 14px; }
+      .modal-head { padding: 8px 12px; }
+      .modal-body { padding: 10px 12px; }
+      .modal-foot { padding: 8px 12px; }
+      .row { gap: 4px; margin-bottom: 8px; }
+      .row input, .inline-field-action .btn { height: 36px; }
+      .support-qr-wrap img { max-height: calc(100dvh - 160px); object-fit: contain; }
+    }
+
+    @media (max-height: 460px) {
+      .modal-head h3 { font-size: 13px; }
+      .modal-close { width: 28px; height: 28px; }
+      .modal-body { padding-top: 8px; padding-bottom: 8px; }
+      .modal-foot { padding-top: 6px; padding-bottom: 6px; }
+      .modal-foot .btn { height: 34px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="titlebar" id="titlebar">
+      <div class="brand">
+        <div class="brand-mark"><img id="app-logo" alt=""></div>
+      <div class="brand-title">CodexLink · macOS <button type="button" class="app-version" id="app-version" data-action="check-update" title="检查更新">v1.0.22</button></div>
+      </div>
+      <div class="window-controls">
+        <button class="window-button" data-window="minimize" aria-label="最小化"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+        <button class="window-button" data-window="maximize" aria-label="最大化"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11"/></svg></button>
+        <button class="window-button close" data-window="close" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="card">
+        <div class="card-head">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <h2>账户</h2>
+            <span class="user-pill is-empty" id="user-value" title="用户名">未登录</span>
+          </div>
+          <div class="card-head-actions">
+            <button class="head-btn primary" id="login-toggle-btn" data-action="open-login">登录</button>
+            <button class="head-btn" data-action="open-register">注册</button>
+          </div>
+        </div>
+
+        <div class="balance-box">
+          <div class="balance-main">
+            <div class="balance-label-row">
+              <span>当前余额</span>
+              <button class="icon-btn" id="refresh-balance-btn" data-action="refresh-balance" title="刷新余额" aria-label="刷新余额">
+                <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
+            <div class="v" id="balance-value">$--</div>
+          </div>
+          <div class="balance-side">
+            <span class="login-state-pill" id="login-pill">未登录</span>
+            <button class="btn soft" data-action="open-topup">充值</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>安装与导入</h2>
+        </div>
+        <div class="setup-grid">
+          <button class="setup-item tone-1" id="step-install-codex" data-action="open-install-codex" title="安装 Codex">
+            <div class="ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg>
+            </div>
+            <div class="name">安装 Codex</div>
+          </button>
+          <button class="setup-item tone-3" id="step-import-api" data-action="import-api" title="导入 API">
+            <div class="ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 5v10"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg>
+            </div>
+            <div class="name">导入 API</div>
+          </button>
+        </div>
+        <div class="setup-progress" id="setup-progress">
+          <div class="setup-progress-top">
+            <div class="setup-progress-label" id="setup-progress-label">准备中…</div>
+            <div class="setup-progress-pct" id="setup-progress-pct">0%</div>
+          </div>
+          <div class="setup-progress-track">
+            <div class="setup-progress-fill" id="setup-progress-fill"></div>
+          </div>
+          <div class="setup-progress-meta" id="setup-progress-meta"></div>
+        </div>
+      </section>
+
+
+      <section class="card">
+        <div class="card-head">
+          <h2>切换令牌</h2>
+          <div class="route-head-actions">
+            <label class="official-switch" id="official-switch-label" title="切换到 Codex 官方账号登录">
+              <span class="official-switch-text">官方</span>
+              <input type="checkbox" id="official-mode-toggle" aria-label="使用官方渠道">
+              <span class="official-switch-track" aria-hidden="true"></span>
+            </label>
+            <button class="route-icon-btn import" id="import-ccswitch-btn" data-action="import-ccswitch-profiles" title="导入第三方 API" aria-label="导入第三方 API" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3"/><path d="M19 5v5"/><path d="M5 11v6c0 1.7 3.1 3 7 3"/><path d="m15 17 2 2 4-4"/><path d="M17 19v-7"/></svg>
+            </button>
+            <button class="route-icon-btn" id="reset-api-profiles-btn" data-action="reset-api-profiles" title="清空全部令牌并重新导入 9 条 API" aria-label="清空全部令牌并重新导入 9 条 API">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M9 10v6M15 10v6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="route-select-wrap" id="route-select-wrap">
+          <button type="button" class="route-select-btn" id="route-select-btn" aria-haspopup="listbox" aria-expanded="false">
+            <span class="label" id="route-select-label">选择令牌 / 路线</span>
+            <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="route-menu" id="route-menu" role="listbox"></div>
+        </div>
+        <div class="meta" id="route-meta">当前未选择令牌</div>
+      </section>
+      <section class="card">
+        <div class="card-head codex-head">
+          <div class="card-title-row">
+            <h2>Codex</h2>
+            <span class="status-pill" id="codex-pill">未启动</span>
+          </div>
+          <div class="card-head-tools" aria-label="Codex 文件与对话快捷操作">
+            <div class="tool-menu-wrap files-tools-wrap" id="files-tools-wrap">
+              <button type="button" class="tool-icon-btn" id="codex-files-btn" data-tooltip="Codex 文件" aria-label="打开 Codex 文件菜单" aria-haspopup="menu" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h6l2 2h9v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 9.5h17"/><path d="M14.5 12.5h3M14.5 15.5h2"/></svg>
+              </button>
+              <div class="tool-menu files-menu" id="files-menu" role="menu" aria-label="Codex 文件">
+                <div class="tool-menu-title">选择文件操作</div>
+                <button type="button" class="tool-menu-action" data-action="open-codex-root" role="menuitem">
+                  <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 9h17"/></svg></span>
+                  <span class="menu-copy"><span class="menu-label">打开根目录</span><span class="menu-hint">打开 %USERPROFILE%\.codex</span></span>
+                </button>
+                <button type="button" class="tool-menu-action" data-action="open-codex-config" role="menuitem">
+                  <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M6 3.5h8l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14 3.5V8h4"/><path d="M8 13h7M8 16.5h5"/></svg></span>
+                  <span class="menu-copy"><span class="menu-label">打开 config</span><span class="menu-hint">使用记事本打开 config.toml</span></span>
+                </button>
+              </div>
+            </div>
+            <span class="tool-group-divider" role="separator" aria-orientation="vertical"></span>
+            <div class="tool-menu-wrap history-tools-wrap" id="history-tools-wrap">
+              <button type="button" class="tool-icon-btn" id="conversation-tools-btn" data-tooltip="对话备份与恢复" aria-label="打开对话备份与恢复菜单" aria-haspopup="menu" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M3 4h18v4H3z"/><path d="M8 12h5"/><path d="M17 11.5a3.5 3.5 0 1 1-2.8 5.6"/><path d="M14 14v3h3"/></svg>
+              </button>
+              <div class="tool-menu history-menu" id="history-menu" role="menu" aria-label="对话备份与恢复">
+                <div class="tool-menu-title">选择对话操作</div>
+                <button type="button" class="tool-menu-action history-menu-action" data-action="backup-conversations" role="menuitem">
+                  <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M4 8h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M3 4h18v4H3z"/><path d="M12 10.5v6M9.5 14l2.5 2.5 2.5-2.5"/></svg></span>
+                  <span class="menu-copy"><span class="menu-label">备份对话</span><span class="menu-hint">创建新的完整对话备份</span></span>
+                </button>
+                <button type="button" class="tool-menu-action history-menu-action" data-action="restore-conversations" role="menuitem">
+                  <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M5 8V4h4"/><path d="M5.5 5.5A8 8 0 1 1 4 14"/><path d="M8 12h8M11 9l-3 3 3 3"/></svg></span>
+                  <span class="menu-copy"><span class="menu-label">恢复对话</span><span class="menu-hint">校验备份并合并恢复</span></span>
+                </button>
+                <button type="button" class="tool-menu-action history-menu-action" data-action="repair-conversation-sidebar" role="menuitem">
+                  <span class="menu-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M12 9h5M12 13h4"/><path d="M14 17a3 3 0 1 0 3-3"/><path d="M17 12v2h-2"/></svg></span>
+                  <span class="menu-copy"><span class="menu-label">恢复侧边栏对话</span><span class="menu-hint">扫描本机对话并重建侧栏</span></span>
+                </button>
+                <button type="button" class="tool-menu-action history-menu-action" data-action="open-backup-folder" role="menuitem">
+                  <span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 9h17"/></svg></span>
+                  <span class="menu-copy"><span class="menu-label">打开备份文件夹</span><span class="menu-hint">查看和管理本机备份文件</span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="codex-actions">
+          <button class="btn primary" data-action="start-codex">启动 Codex</button>
+          <button class="btn" data-action="restart-codex">重启 Codex</button>
+        </div>
+        <div class="meta" id="status-meta">完成上方步骤后，登录并启动 Codex。</div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-tools">
+        <button class="footer-btn footer-icon-btn" data-action="open-logs" title="诊断日志" aria-label="诊断日志">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>
+        </button>
+        <button class="footer-btn footer-icon-btn" data-action="open-site" title="官网" aria-label="官网">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/></svg>
+        </button>
+        <button class="footer-btn footer-icon-btn" data-action="open-support" title="客服" aria-label="客服">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14a8 8 0 0 1 16 0"/><path d="M18 19c0 1.1-.9 2-2 2h-3"/><path d="M4 14v3a2 2 0 0 0 2 2h1v-7H6a2 2 0 0 0-2 2zM20 14v3a2 2 0 0 1-2 2h-1v-7h1a2 2 0 0 1 2 2z"/></svg>
+        </button>
+      </div>
+      <div class="footer-actions">
+        <button class="footer-btn footer-guide-btn" data-action="open-usage-guide">使用说明</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 登录二级弹窗 -->
+  <div class="backdrop" id="login-backdrop">
+    <section class="modal login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <header class="modal-head">
+        <h3 id="login-title">登录账户</h3>
+        <button class="modal-close" data-close-modal="login" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="row">
+          <label for="username">用户名</label>
+          <input id="username" autocomplete="username" placeholder="请输入用户名" />
+        </div>
+        <div class="row">
+          <label for="password">密码</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码" />
+        </div>
+        <div class="hint">登录成功后将自动关闭此窗口。</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close-modal="login">取消</button>
+        <button class="btn primary" id="login-submit-btn" data-action="login">确认登录</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 注册二级弹窗 -->
+  <div class="backdrop" id="register-backdrop">
+    <section class="modal login-modal" role="dialog" aria-modal="true" aria-labelledby="register-title">
+      <header class="modal-head">
+        <h3 id="register-title">注册账户</h3>
+        <button class="modal-close" data-close-modal="register" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="row">
+          <label for="reg-username">用户名</label>
+          <input id="reg-username" autocomplete="username" placeholder="最多 20 个字符" maxlength="20" />
+        </div>
+        <div class="row">
+          <label for="reg-password">密码</label>
+          <input id="reg-password" type="password" autocomplete="new-password" placeholder="8-20 位密码" maxlength="20" />
+        </div>
+        <div class="row">
+          <label for="reg-password2">确认密码</label>
+          <input id="reg-password2" type="password" autocomplete="new-password" placeholder="再次输入密码" maxlength="20" />
+        </div>
+        <div class="row">
+          <label for="reg-email">邮箱</label>
+          <input id="reg-email" type="email" autocomplete="email" placeholder="请输入邮箱" required />
+        </div>
+        <div class="row">
+          <label for="reg-code">邮箱验证码（未收到检查垃圾箱）</label>
+          <div class="inline-field-action">
+            <input id="reg-code" placeholder="请输入邮箱验证码" required />
+            <button class="btn" id="send-code-btn" data-action="send-code">发送验证码</button>
+          </div>
+        </div>
+        <div class="row">
+          <label for="reg-invite">邀请码（可选）</label>
+          <input id="reg-invite" placeholder="邀请码 / aff_code" />
+        </div>
+        <div class="hint">注册成功后会自动登录并关闭窗口。</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close-modal="register">取消</button>
+        <button class="btn primary" id="register-submit-btn" data-action="register">确认注册</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 充值二级弹窗 -->
+  <div class="backdrop" id="topup-backdrop">
+    <section class="modal topup-modal" role="dialog" aria-modal="true" aria-labelledby="topup-title">
+      <header class="modal-head">
+        <h3 id="topup-title">余额充值</h3>
+        <button class="modal-close" data-close-modal="topup" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="topup-loading" id="topup-loading">正在加载充值方式…</div>
+        <div class="topup-empty" id="topup-empty" hidden>当前暂无可用的在线充值方式</div>
+        <div class="topup-form" id="topup-form" hidden>
+          <div class="topup-section">
+            <div class="topup-label">充值金额</div>
+            <div class="topup-presets" id="topup-presets"></div>
+          </div>
+          <div class="topup-section">
+            <label class="topup-label" for="topup-amount">自定义金额</label>
+            <div class="topup-custom">
+              <input id="topup-amount" type="number" inputmode="numeric" step="1" autocomplete="off" aria-describedby="topup-note">
+              <div class="topup-payable"><span>待支付</span><strong id="topup-payable">--</strong></div>
+            </div>
+          </div>
+          <div class="topup-section">
+            <div class="topup-label">付款方式</div>
+            <div class="topup-methods" id="topup-methods"></div>
+          </div>
+          <div class="topup-note" id="topup-note">确认后将打开浏览器付款页面，请按页面提示扫码支付。</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close-modal="topup">取消</button>
+        <button class="btn primary" id="topup-submit-btn" data-action="create-topup-payment" disabled>确认充值</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 安装 Codex 选择 -->
+  <div class="backdrop" id="install-codex-backdrop">
+    <section class="modal choice-modal" role="dialog" aria-modal="true">
+      <header class="modal-head">
+        <h3>安装 Codex</h3>
+        <button class="modal-close" data-close-modal="install-codex" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="choice-list">
+          <button class="choice-btn" data-action="install-online">
+            <strong>微软商店安装</strong>
+            <span>通过商店 / winget 安装 ChatGPT（原 Codex）桌面应用</span>
+          </button>
+          <button class="choice-btn" data-action="install-offline">
+            <strong>离线包安装</strong>
+            <span>下载离线包并静默安装（网络不稳定时更稳妥）</span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close-modal="install-codex">取消</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 日志二级弹窗 -->
+  <div class="backdrop" id="logs-backdrop">
+    <section class="modal" role="dialog" aria-modal="true">
+      <header class="modal-head">
+        <h3>诊断日志</h3>
+        <button class="modal-close" data-close-modal="logs" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="log" id="log"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-action="clear-logs">清空</button>
+        <button class="btn primary" data-close-modal="logs">关闭</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast-stack" id="toast-stack"></div>
+
+  <!-- 新版本提示 -->
+  <div class="backdrop" id="update-backdrop">
+    <section class="modal update-modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
+      <header class="modal-head">
+        <h3 id="update-title">发现新版本</h3>
+        <button class="modal-close" data-close-modal="update" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="update-summary">
+          <div class="update-version" id="update-version">发现 CodexLink 新版本，是否下载？</div>
+          <div class="update-notes" id="update-notes">新版已经发布。</div>
+          <div class="update-source">更新信息来自 CodexLink 官方 GitHub Releases</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close-modal="update">稍后</button>
+        <button class="btn primary" data-action="download-update">下载更新</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 客服微信二维码 -->
+  <div class="backdrop" id="support-backdrop">
+    <section class="modal choice-modal" role="dialog" aria-modal="true" aria-labelledby="support-title">
+      <header class="modal-head">
+        <h3 id="support-title">微信客服</h3>
+        <button class="modal-close" data-close-modal="support" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="support-qr-wrap">
+          <img id="support-qr" alt="微信客服二维码" />
+          <div class="support-qr-tip">扫码添加客服微信</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn primary" data-close-modal="support">我知道了</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (() => {
+      const bridge = window.chrome && window.chrome.webview;
+      const defaults = {
+        baseUrl: 'https://api.baorongxs.top',
+        debugPort: 9230
+      };
+      let loggedIn = false;
+      let loginSubmitting = false;
+      let topupInfo = null;
+      let topupSelectedMethod = '';
+      let topupSubmitting = false;
+      let topupCalculateTimer = 0;
+
+      function send(action, extra) {
+        if (!bridge) return;
+        const payload = Object.assign({ action }, extra || {});
+        bridge.postMessage(JSON.stringify(payload));
+      }
+
+      function toast(text, error) {
+        const item = document.createElement('div');
+        item.className = 'toast' + (error ? ' error' : '');
+        item.textContent = text;
+        document.getElementById('toast-stack').appendChild(item);
+        setTimeout(() => item.remove(), 2600);
+      }
+
+      function addLog(message, level) {
+        const box = document.getElementById('log');
+        const line = document.createElement('div');
+        line.className = 'line' + (level === 'error' ? ' err' : level === 'ok' ? ' ok' : '');
+        const ts = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        line.textContent = '[' + ts + '] ' + message;
+        box.appendChild(line);
+        scrollLogsToBottom();
+      }
+
+      function scrollLogsToBottom() {
+        const box = document.getElementById('log');
+        if (!box) return;
+        requestAnimationFrame(() => {
+          box.scrollTop = box.scrollHeight;
+        });
+      }
+
+      function openModal(kind) {
+        document.getElementById(kind + '-backdrop').classList.add('open');
+        if (kind === 'logs') scrollLogsToBottom();
+        if (kind === 'login') {
+          setTimeout(() => {
+            const user = document.getElementById('username');
+            if (user) user.focus();
+          }, 30);
+        }
+        if (kind === 'register') {
+          setTimeout(() => {
+            const user = document.getElementById('reg-username');
+            if (user) user.focus();
+          }, 30);
+        }
+        if (kind === 'topup') {
+          setTimeout(() => {
+            const amount = document.getElementById('topup-amount');
+            if (amount) amount.focus();
+          }, 30);
+        }
+      }
+
+      function closeModal(kind) {
+        document.getElementById(kind + '-backdrop').classList.remove('open');
+        if (kind === 'login') {
+          loginSubmitting = false;
+          const btn = document.getElementById('login-submit-btn');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '确认登录';
+          }
+        }
+        if (kind === 'register') {
+          const btn = document.getElementById('register-submit-btn');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '确认注册';
+          }
+        }
+        if (kind === 'topup') resetTopupSubmit();
+      }
+
+      function setLoginUi(isLoggedIn, username) {
+        loggedIn = !!isLoggedIn;
+        const pill = document.getElementById('login-pill');
+        const userPill = document.getElementById('user-value');
+        const toggle = document.getElementById('login-toggle-btn');
+        const name = (username || '').trim();
+        if (loggedIn) {
+          if (pill) {
+            pill.textContent = '已登录';
+            pill.className = 'login-state-pill ok';
+          }
+          if (userPill) {
+            userPill.textContent = name || '已登录';
+            userPill.title = name || '已登录';
+            userPill.className = name ? 'user-pill' : 'user-pill is-empty';
+          }
+          if (toggle) {
+            toggle.textContent = '退出';
+            toggle.dataset.action = 'logout';
+            toggle.className = 'head-btn danger';
+          }
+        } else {
+          if (pill) {
+            pill.textContent = '未登录';
+            pill.className = 'login-state-pill';
+          }
+          if (userPill) {
+            userPill.textContent = '未登录';
+            userPill.title = '未登录';
+            userPill.className = 'user-pill is-empty';
+          }
+          if (toggle) {
+            toggle.textContent = '登录';
+            toggle.dataset.action = 'open-login';
+            toggle.className = 'head-btn primary';
+          }
+        }
+      }
+
+      function setBalance(data) {
+        data = data || {};
+        document.getElementById('balance-value').textContent = data.balanceText || '$--';
+        const name = data.username || data.displayName || '';
+        setLoginUi(!!data.loggedIn, name);
+        if (data.loggedIn) {
+          closeModal('login');
+          closeModal('register');
+        }
+        if (data.refreshedAt) {
+          document.getElementById('status-meta').textContent = '余额更新于 ' + data.refreshedAt;
+        }
+        const refreshBtn = document.getElementById('refresh-balance-btn');
+        if (refreshBtn) refreshBtn.classList.remove('spinning');
+      }
+
+      function setStatus(text) {
+        const value = text || '未启动';
+        document.getElementById('codex-pill').textContent = value;
+        document.getElementById('codex-pill').className = 'status-pill' + (/成功|运行|注入/.test(value) ? ' ok' : /失败|错误/.test(value) ? ' err' : '');
+        document.getElementById('status-meta').textContent = value;
+      }
+
+      function setSetupProgress(visible, label, percent, meta, indeterminate) {
+        const box = document.getElementById('setup-progress');
+        if (!box) return;
+        if (!visible) {
+          box.classList.remove('show', 'indeterminate');
+          return;
+        }
+        box.classList.add('show');
+        if (indeterminate) box.classList.add('indeterminate');
+        else box.classList.remove('indeterminate');
+        const lbl = document.getElementById('setup-progress-label');
+        const pct = document.getElementById('setup-progress-pct');
+        const fill = document.getElementById('setup-progress-fill');
+        const m = document.getElementById('setup-progress-meta');
+        if (lbl && label != null) lbl.textContent = label;
+        let p = Number(percent);
+        if (!isFinite(p)) p = 0;
+        p = Math.max(0, Math.min(100, p));
+        if (pct) pct.textContent = indeterminate ? '…' : (Math.round(p) + '%');
+        if (fill && !indeterminate) fill.style.width = p.toFixed(1) + '%';
+        if (m && meta != null) m.textContent = meta;
+      }
+
+      function setStepState(id, state) {
+        const node = document.getElementById(id);
+        if (!node) return;
+        node.classList.remove('running', 'success', 'error');
+        if (state) node.classList.add(state);
+        if (state === 'running') {
+          const names = {
+            'step-install-codex': '正在安装 Codex…',
+            'step-import-api': '正在导入 API…'
+          };
+          setSetupProgress(true, names[id] || '处理中…', 8, '请稍候，可在诊断日志查看详情', true);
+        } else if (state === 'success') {
+          setSetupProgress(true, '已完成', 100, '', false);
+          setTimeout(() => setSetupProgress(false), 1600);
+        } else if (state === 'error') {
+          setSetupProgress(true, '失败', 100, '请查看诊断日志', false);
+        }
+      }
+
+      function collectForm() {
+        return {
+          baseUrl: defaults.baseUrl,
+          username: document.getElementById('username').value.trim(),
+          password: document.getElementById('password').value,
+          debugPort: defaults.debugPort
+        };
+      }
+
+      function submitLogin() {
+        const form = collectForm();
+        if (!form.username || !form.password) {
+          toast('请输入用户名和密码', true);
+          return;
+        }
+        loginSubmitting = true;
+        const btn = document.getElementById('login-submit-btn');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '登录中…';
+        }
+        send('login', form);
+      }
+
+      function openTopup() {
+        if (!loggedIn) {
+          toast('请先登录账户', true);
+          openModal('login');
+          return;
+        }
+        topupInfo = null;
+        topupSelectedMethod = '';
+        document.getElementById('topup-loading').hidden = false;
+        document.getElementById('topup-loading').textContent = '正在加载充值方式…';
+        document.getElementById('topup-empty').hidden = true;
+        document.getElementById('topup-form').hidden = true;
+        document.getElementById('topup-submit-btn').disabled = true;
+        openModal('topup');
+        send('open-topup');
+      }
+
+      function resetTopupSubmit() {
+        topupSubmitting = false;
+        const btn = document.getElementById('topup-submit-btn');
+        if (btn) {
+          btn.textContent = '确认充值';
+          btn.disabled = !topupInfo || !topupSelectedMethod;
+        }
+      }
+
+      function selectedTopupMethod() {
+        const methods = topupInfo && Array.isArray(topupInfo.pay_methods) ? topupInfo.pay_methods : [];
+        return methods.find((method) => String(method.type || '') === topupSelectedMethod) || null;
+      }
+
+      function currentTopupAmount() {
+        const input = document.getElementById('topup-amount');
+        const value = input ? Number.parseInt(input.value, 10) : 0;
+        return Number.isFinite(value) ? value : 0;
+      }
+
+      function minimumTopupAmount() {
+        const method = selectedTopupMethod();
+        const general = Number(topupInfo && topupInfo.min_topup) || 1;
+        const methodMin = Number(method && method.min_topup) || 0;
+        return Math.max(1, general, methodMin);
+      }
+
+      function setTopupAmount(value) {
+        const amount = Math.max(0, Number.parseInt(value, 10) || 0);
+        const input = document.getElementById('topup-amount');
+        if (input) input.value = amount > 0 ? String(amount) : '';
+        document.querySelectorAll('.topup-preset').forEach((button) => {
+          button.classList.toggle('active', Number(button.dataset.amount) === amount);
+        });
+        scheduleTopupCalculation();
+      }
+
+      function selectTopupMethod(type) {
+        topupSelectedMethod = String(type || '');
+        document.querySelectorAll('.topup-method').forEach((button) => {
+          button.classList.toggle('active', button.dataset.method === topupSelectedMethod);
+        });
+        const input = document.getElementById('topup-amount');
+        if (input) input.min = String(minimumTopupAmount());
+        scheduleTopupCalculation();
+      }
+
+      function scheduleTopupCalculation() {
+        clearTimeout(topupCalculateTimer);
+        const amount = currentTopupAmount();
+        const payable = document.getElementById('topup-payable');
+        const btn = document.getElementById('topup-submit-btn');
+        const valid = !!topupSelectedMethod && amount >= minimumTopupAmount();
+        if (btn) btn.disabled = topupSubmitting || !valid;
+        if (payable) payable.textContent = valid ? '计算中…' : '--';
+        if (!valid) return;
+        topupCalculateTimer = setTimeout(() => {
+          send('calculate-topup', { amount: amount, paymentMethod: topupSelectedMethod });
+        }, 180);
+      }
+
+      function renderTopupInfo(info) {
+        topupInfo = info || {};
+        const options = Array.isArray(topupInfo.amount_options)
+          ? topupInfo.amount_options.map(Number).filter((amount) => amount > 0)
+          : [];
+        const methods = Array.isArray(topupInfo.pay_methods)
+          ? topupInfo.pay_methods.filter((method) => method && method.type && String(method.type).toLowerCase() !== 'stripe')
+          : [];
+        const available = topupInfo.enable_online_topup !== false && methods.length > 0;
+        document.getElementById('topup-loading').hidden = true;
+        document.getElementById('topup-empty').hidden = available;
+        document.getElementById('topup-form').hidden = !available;
+        if (!available) {
+          topupInfo = null;
+          resetTopupSubmit();
+          return;
+        }
+
+        const presetBox = document.getElementById('topup-presets');
+        presetBox.innerHTML = '';
+        options.forEach((amount) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'topup-preset';
+          button.dataset.amount = String(amount);
+          const title = document.createElement('strong');
+          title.textContent = String(amount);
+          const detail = document.createElement('span');
+          detail.textContent = '充值 ' + amount;
+          button.append(title, detail);
+          button.addEventListener('click', () => setTopupAmount(amount));
+          presetBox.appendChild(button);
+        });
+
+        const methodBox = document.getElementById('topup-methods');
+        methodBox.innerHTML = '';
+        methods.forEach((method) => {
+          const type = String(method.type || '');
+          const minimum = Math.max(Number(topupInfo.min_topup) || 1, Number(method.min_topup) || 0);
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'topup-method';
+          button.dataset.method = type;
+          const icon = document.createElement('span');
+          icon.className = 'topup-method-icon';
+          icon.textContent = /ali/i.test(type) ? '支' : '付';
+          const copy = document.createElement('span');
+          copy.className = 'topup-method-copy';
+          const name = document.createElement('strong');
+          name.textContent = String(method.name || type);
+          const hint = document.createElement('span');
+          hint.textContent = minimum > (Number(topupInfo.min_topup) || 1) ? ('最低 ' + minimum) : '扫码付款';
+          copy.append(name, hint);
+          button.append(icon, copy);
+          button.addEventListener('click', () => selectTopupMethod(type));
+          methodBox.appendChild(button);
+        });
+
+        topupInfo.pay_methods = methods;
+        topupSelectedMethod = String(methods[0].type || '');
+        const minimum = minimumTopupAmount();
+        const initial = options.find((amount) => amount >= minimum) || minimum;
+        selectTopupMethod(topupSelectedMethod);
+        setTopupAmount(initial);
+      }
+
+      function submitTopup() {
+        if (topupSubmitting) return;
+        const amount = currentTopupAmount();
+        const minimum = minimumTopupAmount();
+        if (!topupSelectedMethod || amount < minimum) {
+          toast('当前付款方式最低充值 ' + minimum, true);
+          return;
+        }
+        topupSubmitting = true;
+        const btn = document.getElementById('topup-submit-btn');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '正在创建订单…';
+        }
+        send('create-topup-payment', { amount: amount, paymentMethod: topupSelectedMethod });
+      }
+
+      function submitRegister() {
+        const username = document.getElementById('reg-username').value.trim();
+        const password = document.getElementById('reg-password').value;
+        const password2 = document.getElementById('reg-password2').value;
+        const email = document.getElementById('reg-email').value.trim();
+        const code = document.getElementById('reg-code').value.trim();
+        const invite = document.getElementById('reg-invite').value.trim();
+        if (!username || !password) {
+          toast('请输入用户名和密码', true);
+          return;
+        }
+        if (password.length < 8 || password.length > 20) {
+          toast('密码长度需为 8-20 位', true);
+          return;
+        }
+        if (password !== password2) {
+          toast('两次输入的密码不一致', true);
+          return;
+        }
+        if (!email) {
+          toast('请填写邮箱', true);
+          return;
+        }
+        if (email.indexOf('@') < 1 || email.indexOf('.') < 3) {
+          toast('邮箱格式不正确', true);
+          return;
+        }
+        if (!code) {
+          toast('请填写邮箱验证码', true);
+          return;
+        }
+        const btn = document.getElementById('register-submit-btn');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '注册中…';
+        }
+        send('register', {
+          baseUrl: defaults.baseUrl,
+          username: username,
+          password: password,
+          email: email,
+          verificationCode: code,
+          affCode: invite
+        });
+      }
+
+      function sendVerificationCode() {
+        const email = document.getElementById('reg-email').value.trim();
+        if (!email) {
+          toast('请先填写邮箱', true);
+          return;
+        }
+        const btn = document.getElementById('send-code-btn');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '发送中…';
+        }
+        send('send-code', { baseUrl: defaults.baseUrl, email: email });
+        let left = 60;
+        const timer = setInterval(() => {
+          left -= 1;
+          if (!btn) return;
+          if (left <= 0) {
+            clearInterval(timer);
+            btn.disabled = false;
+            btn.textContent = '发送验证码';
+          } else {
+            btn.textContent = left + 's';
+          }
+        }, 1000);
+      }
+
+
+      function renderRoutes(payload) {
+        const menu = document.getElementById('route-menu');
+        const label = document.getElementById('route-select-label');
+        const meta = document.getElementById('route-meta');
+        const btn = document.getElementById('route-select-btn');
+        const toggle = document.getElementById('official-mode-toggle');
+        const toggleLabel = document.getElementById('official-switch-label');
+        const importBtn = document.getElementById('import-ccswitch-btn');
+        const resetBtn = document.getElementById('reset-api-profiles-btn');
+        if (!menu || !label) return;
+        const profiles = Array.isArray(payload && payload.profiles)
+          ? payload.profiles
+          : ((payload && payload.routes) || []).map((name) => ({ id: String(name), name: String(name), source: '' }));
+        const currentId = String((payload && payload.currentId) || '');
+        const officialMode = !!(payload && payload.officialMode);
+        const officialAvailable = !!(payload && payload.officialAvailable);
+        const currentProfile = profiles.find((profile) => String(profile.id || '') === currentId) || null;
+        if (toggle) {
+          toggle.checked = officialMode;
+          toggle.disabled = false;
+        }
+        if (toggleLabel) toggleLabel.title = officialAvailable
+          ? '重新使用 Codex 官方账号登录'
+          : '切换到 Codex 官方账号登录';
+        if (importBtn) {
+          importBtn.hidden = !(payload && payload.ccSwitchImportAvailable);
+          importBtn.disabled = false;
+        }
+        if (resetBtn) resetBtn.disabled = false;
+        menu.innerHTML = '';
+        if (!profiles.length) {
+          menu.innerHTML = '<div class="route-empty">导入 API 后可在此切换路线</div>';
+          label.textContent = officialMode ? '官方渠道' : '选择 API 令牌';
+          if (meta) meta.textContent = officialMode ? '当前使用官方登录' : '当前没有可用 API';
+          if (btn) btn.disabled = true;
+          closeRouteMenu();
+          return;
+        }
+        if (btn) btn.disabled = officialMode;
+        profiles.forEach((profile) => {
+          const profileId = String(profile.id || '');
+          const name = String(profile.name || '未命名 API');
+          const opt = document.createElement('button');
+          opt.type = 'button';
+          opt.className = 'route-option' + (profileId === currentId && !officialMode ? ' active' : '');
+          opt.setAttribute('role', 'option');
+          opt.dataset.route = profileId;
+          opt.innerHTML = '<span></span><span class="check"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span>';
+          opt.querySelector('span').textContent = name;
+          opt.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeRouteMenu();
+            Array.from(menu.querySelectorAll('.route-option')).forEach((n) => { n.disabled = true; });
+            send('select-route', { profileId: profileId });
+          });
+          menu.appendChild(opt);
+        });
+        label.textContent = officialMode ? '官方渠道' : (currentProfile ? currentProfile.name : '选择 API 令牌');
+        if (meta) {
+          if (officialMode) meta.textContent = '当前使用官方登录，下方 API 暂不生效';
+          else if (currentProfile) meta.textContent = '当前：' + currentProfile.name;
+          else meta.textContent = '请选择一个 API 令牌';
+        }
+        if (officialMode) closeRouteMenu();
+      }
+
+      function openRouteMenu() {
+        const menu = document.getElementById('route-menu');
+        const btn = document.getElementById('route-select-btn');
+        if (!menu || !btn || btn.disabled) return;
+        closeFilesMenu();
+        closeHistoryMenu();
+        menu.classList.add('open');
+        btn.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+
+      function closeRouteMenu() {
+        const menu = document.getElementById('route-menu');
+        const btn = document.getElementById('route-select-btn');
+        if (menu) menu.classList.remove('open');
+        if (btn) {
+          btn.classList.remove('open');
+          btn.setAttribute('aria-expanded', 'false');
+        }
+      }
+
+      function toggleRouteMenu() {
+        const menu = document.getElementById('route-menu');
+        if (!menu) return;
+        if (menu.classList.contains('open')) closeRouteMenu();
+        else openRouteMenu();
+      }
+
+      function openFilesMenu() {
+        const menu = document.getElementById('files-menu');
+        const btn = document.getElementById('codex-files-btn');
+        if (!menu || !btn || btn.disabled) return;
+        closeRouteMenu();
+        closeHistoryMenu();
+        menu.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+
+      function closeFilesMenu() {
+        const menu = document.getElementById('files-menu');
+        const btn = document.getElementById('codex-files-btn');
+        if (menu) menu.classList.remove('open');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+
+      function toggleFilesMenu() {
+        const menu = document.getElementById('files-menu');
+        if (!menu) return;
+        if (menu.classList.contains('open')) closeFilesMenu();
+        else openFilesMenu();
+      }
+
+      function openHistoryMenu() {
+        const menu = document.getElementById('history-menu');
+        const btn = document.getElementById('conversation-tools-btn');
+        if (!menu || !btn || btn.disabled) return;
+        closeRouteMenu();
+        closeFilesMenu();
+        menu.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+
+      function closeHistoryMenu() {
+        const menu = document.getElementById('history-menu');
+        const btn = document.getElementById('conversation-tools-btn');
+        if (menu) menu.classList.remove('open');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+
+      function toggleHistoryMenu() {
+        const menu = document.getElementById('history-menu');
+        if (!menu) return;
+        if (menu.classList.contains('open')) closeHistoryMenu();
+        else openHistoryMenu();
+      }
+
+      const routeBtn = document.getElementById('route-select-btn');
+      if (routeBtn) {
+        routeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleRouteMenu();
+        });
+      }
+      const officialToggle = document.getElementById('official-mode-toggle');
+      if (officialToggle) {
+        officialToggle.addEventListener('change', () => {
+          officialToggle.disabled = true;
+          closeRouteMenu();
+          send('set-official-mode', { enabled: officialToggle.checked });
+        });
+      }
+
+      function bindHoverMenu(wrapId, buttonId, menuId, openMenu, closeMenu) {
+        const wrap = document.getElementById(wrapId);
+        const btn = document.getElementById(buttonId);
+        const menu = document.getElementById(menuId);
+        if (!wrap || !btn || !menu) return;
+        wrap.addEventListener('mouseenter', openMenu);
+        wrap.addEventListener('mouseleave', closeMenu);
+        wrap.addEventListener('focusin', openMenu);
+        wrap.addEventListener('focusout', (e) => {
+          if (!wrap.contains(e.relatedTarget)) closeMenu();
+        });
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openMenu();
+        });
+        menu.addEventListener('click', () => closeMenu());
+      }
+
+      bindHoverMenu('files-tools-wrap', 'codex-files-btn', 'files-menu', openFilesMenu, closeFilesMenu);
+      bindHoverMenu('history-tools-wrap', 'conversation-tools-btn', 'history-menu', openHistoryMenu, closeHistoryMenu);
+      document.addEventListener('click', (e) => {
+        const wrap = document.getElementById('route-select-wrap');
+        if (wrap && !wrap.contains(e.target)) closeRouteMenu();
+        const filesWrap = document.getElementById('files-tools-wrap');
+        if (filesWrap && !filesWrap.contains(e.target)) closeFilesMenu();
+        const historyWrap = document.getElementById('history-tools-wrap');
+        if (historyWrap && !historyWrap.contains(e.target)) closeHistoryMenu();
+      });
+
+      document.getElementById('titlebar').addEventListener('mousedown', (e) => {
+        if (!e.target.closest('button')) send('drag-window');
+      });
+      document.querySelectorAll('[data-window]').forEach((btn) => {
+        btn.addEventListener('click', () => send('window-' + btn.dataset.window));
+      });
+      document.querySelectorAll('[data-action]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          if (action === 'open-login') { openModal('login'); return; }
+          if (action === 'open-register') { openModal('register'); return; }
+          if (action === 'open-support') { openModal('support'); return; }
+          if (action === 'open-logs') { openModal('logs'); return; }
+          if (action === 'open-install-codex') { openModal('install-codex'); return; }
+          if (action === 'clear-logs') {
+            document.getElementById('log').innerHTML = '';
+            send('clear-logs');
+            return;
+          }
+          if (action === 'login') { submitLogin(); return; }
+          if (action === 'register') { submitRegister(); return; }
+          if (action === 'send-code') { sendVerificationCode(); return; }
+          if (action === 'refresh-balance') {
+            const refreshBtn = document.getElementById('refresh-balance-btn');
+            if (refreshBtn) refreshBtn.classList.add('spinning');
+            send('refresh-balance', collectForm());
+            return;
+          }
+          if (action === 'install-online' || action === 'install-offline') {
+            closeModal('install-codex');
+            setStepState('step-install-codex', 'running');
+            send(action, collectForm());
+            return;
+          }
+          if (action === 'import-api') {
+            setStepState('step-import-api', 'running');
+            send('import-api', collectForm());
+            return;
+          }
+          if (action === 'reset-api-profiles') {
+            btn.disabled = true;
+            send('reset-api-profiles', collectForm());
+            return;
+          }
+          if (action === 'open-topup') {
+            openTopup();
+            return;
+          }
+          if (action === 'create-topup-payment') {
+            submitTopup();
+            return;
+          }
+          if (action === 'download-update') {
+            closeModal('update');
+            send('download-update');
+            return;
+          }
+          send(action, collectForm());
+        });
+      });
+      document.querySelectorAll('[data-close-modal]').forEach((btn) => {
+        btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
+      });
+      document.querySelectorAll('.backdrop').forEach((backdrop) => {
+        backdrop.addEventListener('mousedown', (e) => {
+          if (e.target === backdrop) {
+            const kind = backdrop.id.replace('-backdrop', '');
+            closeModal(kind);
+          }
+        });
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeModal('login');
+          closeModal('register');
+          closeModal('install-codex');
+          closeModal('logs');
+          closeModal('support');
+          closeModal('update');
+          closeModal('topup');
+          closeRouteMenu();
+          closeFilesMenu();
+          closeHistoryMenu();
+        }
+        if (e.key === 'Enter' && document.getElementById('login-backdrop').classList.contains('open')) submitLogin();
+        if (e.key === 'Enter' && document.getElementById('register-backdrop').classList.contains('open')) submitRegister();
+        if (e.key === 'Enter' && document.getElementById('topup-backdrop').classList.contains('open')) submitTopup();
+      });
+
+      document.getElementById('topup-amount').addEventListener('input', () => {
+        document.querySelectorAll('.topup-preset').forEach((button) => button.classList.remove('active'));
+        scheduleTopupCalculation();
+      });
+
+      if (bridge) {
+        bridge.addEventListener('message', (event) => {
+          const data = event.data || {};
+          if (data.type === 'assets') {
+            if (data.appLogo) document.getElementById('app-logo').src = data.appLogo;
+            if (data.supportQr) {
+              const qr = document.getElementById('support-qr');
+              if (qr) qr.src = data.supportQr;
+            }
+          } else if (data.type === 'settings') {
+            if (data.baseUrl) defaults.baseUrl = data.baseUrl;
+            if (data.debugPort) defaults.debugPort = Number(data.debugPort) || 9230;
+            if (data.appVersion) {
+              const v = String(data.appVersion);
+              const av = document.getElementById('app-version');
+              if (av) av.textContent = 'v' + v.replace(/^v/i,'');
+            }
+            if (data.username) document.getElementById('username').value = data.username;
+            if (data.password) document.getElementById('password').value = data.password;
+          } else if (data.type === 'balance') {
+            setBalance(data);
+          } else if (data.type === 'topup-info') {
+            renderTopupInfo(data.info);
+          } else if (data.type === 'topup-amount') {
+            if (Number(data.amount) === currentTopupAmount() && String(data.paymentMethod || '') === topupSelectedMethod) {
+              document.getElementById('topup-payable').textContent = String(data.paymentAmount || '--');
+            }
+          } else if (data.type === 'topup-payment-opened') {
+            resetTopupSubmit();
+            closeModal('topup');
+          } else if (data.type === 'topup-error') {
+            if (data.stage === 'load') {
+              document.getElementById('topup-loading').hidden = false;
+              document.getElementById('topup-loading').textContent = data.message || '充值方式加载失败';
+              document.getElementById('topup-form').hidden = true;
+            } else if (data.stage === 'calculate'
+                && Number(data.amount) === currentTopupAmount()
+                && String(data.paymentMethod || '') === topupSelectedMethod) {
+              document.getElementById('topup-payable').textContent = '--';
+            } else if (data.stage === 'payment') {
+              resetTopupSubmit();
+            }
+          } else if (data.type === 'status') {
+            setStatus(data.text);
+          } else if (data.type === 'history-operation') {
+            const toolsBtn = document.getElementById('conversation-tools-btn');
+            const menuBtns = document.querySelectorAll('#history-menu .history-menu-action');
+            const busy = !!data.busy;
+            if (toolsBtn) {
+              toolsBtn.disabled = busy;
+              toolsBtn.classList.toggle('busy', busy);
+            }
+            menuBtns.forEach((btn) => { btn.disabled = busy; });
+            if (busy) closeHistoryMenu();
+          } else if (data.type === 'routes') {
+            renderRoutes(data);
+          } else if (data.type === 'progress') {
+            // {type:'progress', label, percent, meta, indeterminate, done, error}
+            const done = !!data.done;
+            const err = !!data.error;
+            const ind = data.indeterminate === true || (data.percent == null && !done);
+            setSetupProgress(true, data.label || '处理中…', data.percent, data.meta || '', ind && !done);
+            if (done && !err) setTimeout(() => setSetupProgress(false), 1500);
+          } else if (data.type === 'step') {
+            // {type:'step', id:'install-codex|import-api', state:'running|success|error'}
+            const map = {
+              'install-codex': 'step-install-codex',
+              'install-online': 'step-install-codex',
+              'install-offline': 'step-install-codex',
+              'import-api': 'step-import-api'
+            };
+            const nodeId = map[data.id] || data.id;
+            setStepState(nodeId, data.state || '');
+          } else if (data.type === 'log') {
+            addLog(data.message, data.level);
+            if (loginSubmitting && data.level === 'error' && /登录/.test(String(data.message || ''))) {
+              loginSubmitting = false;
+              const btn = document.getElementById('login-submit-btn');
+              if (btn) {
+                btn.disabled = false;
+                btn.textContent = '确认登录';
+              }
+            }
+          } else if (data.type === 'toast') {
+            toast(data.message, !!data.error);
+            if (loginSubmitting && data.error) {
+              loginSubmitting = false;
+              const btn = document.getElementById('login-submit-btn');
+              if (btn) {
+                btn.disabled = false;
+                btn.textContent = '确认登录';
+              }
+            }
+            if (data.error) {
+              const rbtn = document.getElementById('register-submit-btn');
+              if (rbtn) {
+                rbtn.disabled = false;
+                rbtn.textContent = '确认注册';
+              }
+              const refreshBtn = document.getElementById('refresh-balance-btn');
+              if (refreshBtn) refreshBtn.classList.remove('spinning');
+            }
+          } else if (data.type === 'update-available') {
+            const latest = String(data.latestVersion || '').replace(/^v/i, '');
+            const current = String(data.currentVersion || '').replace(/^v/i, '');
+            const versionBox = document.getElementById('update-version');
+            const notesBox = document.getElementById('update-notes');
+            if (versionBox) versionBox.textContent = '发现 CodexLink v' + latest + '（当前 v' + current + '），是否下载？';
+            if (notesBox) notesBox.textContent = String(data.notes || '新版已经发布，建议下载更新。').trim();
+            openModal('update');
+          } else if (data.type === 'register-ok') {
+            const rbtn = document.getElementById('register-submit-btn');
+            if (rbtn) {
+              rbtn.disabled = false;
+              rbtn.textContent = '确认注册';
+            }
+            closeModal('register');
+            if (data.username) document.getElementById('username').value = data.username;
+            if (data.password) document.getElementById('password').value = data.password;
+          }
+        });
+        send('ui-ready');
+      }
+    })();
+  </script>
+</body>
+</html>

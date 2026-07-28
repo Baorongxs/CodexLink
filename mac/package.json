@@ -1,0 +1,25 @@
+{
+  "name": "codexlink-macos",
+  "version": "1.0.22",
+  "description": "CodexLink macOS launcher, account, payment and local conversation utility",
+  "main": "src/main.js",
+  "author": "CodexLink",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "build:dmg": "bash scripts/build-dmg.sh"
+  },
+  "dependencies": {
+    "adm-zip": "0.5.16",
+    "sql.js": "1.13.0",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@electron/packager": "18.4.4",
+    "archiver": "7.0.1",
+    "electron": "37.2.4",
+    "png2icons": "2.0.1"
+  }
+}
