@@ -43,12 +43,50 @@ jobs:
         working-directory: mac
         run: bash scripts/build-dmg.sh "${{ matrix.arch }}"
 
-      - name: Upload DMG
+      - name: Upload checksum
         uses: actions/upload-artifact@v4
         with:
-          name: CodexLink-macOS-${{ matrix.arch }}-v1.0.22
-          path: |
-            mac/output/*.dmg
-            mac/output/*.sha256
+          name: CodexLink-macOS-${{ matrix.arch }}-checksum
+          path: mac/output/*.sha256
           if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload part aa
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexLink-macOS-${{ matrix.arch }}-part-aa
+          path: mac/output/*.part-aa
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload part ab
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexLink-macOS-${{ matrix.arch }}-part-ab
+          path: mac/output/*.part-ab
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload part ac
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexLink-macOS-${{ matrix.arch }}-part-ac
+          path: mac/output/*.part-ac
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload part ad
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexLink-macOS-${{ matrix.arch }}-part-ad
+          path: mac/output/*.part-ad
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload optional part ae
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexLink-macOS-${{ matrix.arch }}-part-ae
+          path: mac/output/*.part-ae
+          if-no-files-found: ignore
           compression-level: 0

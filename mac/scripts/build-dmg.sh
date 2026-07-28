@@ -83,4 +83,5 @@ cleanup
 trap - EXIT
 
 /usr/bin/shasum -a 256 "$DMG_PATH" > "$DMG_PATH.sha256"
-ls -lh "$DMG_PATH" "$DMG_PATH.sha256"
+/usr/bin/split -b 32m "$DMG_PATH" "$DMG_PATH.part-"
+ls -lh "$DMG_PATH" "$DMG_PATH.sha256" "$DMG_PATH".part-*
