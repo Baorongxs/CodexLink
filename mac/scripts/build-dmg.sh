@@ -35,6 +35,9 @@ npx electron-packager . CodexLink \
   --ignore='^/(build|dist|output|scripts|tests)(/|$)'
 
 PLIST="$APP_PATH/Contents/Info.plist"
+/usr/bin/ditto "$ROOT_DIR/build/CodexLink.icns" "$APP_PATH/Contents/Resources/CodexLink.icns"
+/usr/libexec/PlistBuddy -c "Delete :CFBundleIconFile" "$PLIST" >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string CodexLink.icns" "$PLIST"
 /usr/libexec/PlistBuddy -c "Delete :LSMinimumSystemVersion" "$PLIST" >/dev/null 2>&1 || true
 /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 14.0" "$PLIST"
 
@@ -44,7 +47,11 @@ PLIST="$APP_PATH/Contents/Info.plist"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 APP_ARCHS="$(/usr/bin/lipo -archs "$APP_PATH/Contents/MacOS/CodexLink")"
-if [[ " $APP_ARCHS " != *" $ARCH "* ]]; then
+EXPECTED_ARCH="$ARCH"
+if [[ "$ARCH" == "x64" ]]; then
+  EXPECTED_ARCH="x86_64"
+fi
+if [[ " $APP_ARCHS " != *" $EXPECTED_ARCH "* ]]; then
   echo "Unexpected executable architecture: $APP_ARCHS" >&2
   exit 1
 fi
