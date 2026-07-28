@@ -317,13 +317,21 @@ async fn dispatch_action(
         }
         "install-online" => {
             post(app, json!({ "type": "step", "id": "install-codex", "state": "running" }));
-            post_progress(app, "安装 Codex（macOS）", 60, "正在打开官方下载页…", false, false, false);
+            post_progress(
+                app,
+                "获取 Codex for macOS",
+                60,
+                "正在打开 macOS 官方下载页…",
+                false,
+                false,
+                false,
+            );
             open_external(DOWNLOAD_URL)?;
             post_progress(
                 app,
-                "Codex 安装流程已触发",
+                "官方下载页已打开",
                 100,
-                "下载 DMG 后拖入“应用程序”文件夹",
+                "下载对应芯片的 DMG，再将 Codex 拖入“应用程序”",
                 false,
                 true,
                 false,
@@ -721,13 +729,21 @@ fn install_offline(app: &AppHandle) -> Result<(), String> {
     };
     post(app, json!({ "type": "step", "id": "install-codex", "state": "running" }));
     let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("");
-    post_progress(app, "打开离线安装包", 60, name, false, false, false);
+    post_progress(
+        app,
+        "打开 macOS 安装包",
+        60,
+        name,
+        false,
+        false,
+        false,
+    );
     open::that(path).map_err(|error| error.to_string())?;
     post_progress(
         app,
         "安装包已打开",
         100,
-        "请按 macOS 提示完成安装",
+        "DMG：拖入“应用程序”；PKG：按安装器提示完成",
         false,
         true,
         false,

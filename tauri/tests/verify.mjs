@@ -9,6 +9,8 @@ const html = read("frontend/index.html");
 const bridge = read("frontend/tauri-bridge.js");
 const rust = read("src-tauri/src/lib.rs");
 const cargo = read("src-tauri/Cargo.toml");
+const usageCore = read("frontend/inject/usage-core.js");
+const contextBar = read("frontend/inject/context-bar.js");
 const config = JSON.parse(read("src-tauri/tauri.conf.json"));
 
 assert.match(html, /<script src="tauri-bridge\.js"><\/script>/);
@@ -17,6 +19,15 @@ assert.match(bridge, /invoke\(['"]handle_action['"]/);
 assert.equal(config.app.withGlobalTauri, true);
 assert.equal(config.bundle.macOS.minimumSystemVersion, "14.0");
 assert.deepEqual(config.bundle.targets, ["app", "dmg"]);
+assert.equal(config.app.windows[0].decorations, true);
+assert.equal(config.app.windows[0].titleBarStyle, "Overlay");
+assert.equal(config.app.windows[0].hiddenTitle, true);
+assert.match(html, /打开 macOS 官方下载页/);
+assert.doesNotMatch(html, /微软商店|winget|静默安装/i);
+assert.match(usageCore, /CONTEXT_UI_ENABLED = false/);
+assert.match(contextBar, /mac-stable-v2/);
+assert.match(contextBar, /width:176px!important/);
+assert.doesNotMatch(contextBar, /getBoundingClientRect|findComposer/);
 
 const localOnly = new Set([
   "open-login",

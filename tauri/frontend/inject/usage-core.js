@@ -3,6 +3,9 @@
   const CTX_ID = 'codex-launcher-context-bar';
   const FLOAT_ID = 'codex-launcher-usage-float';
   const STYLE_ID = 'codex-launcher-usage-core-style';
+  // macOS uses the compact native-context bar from context-bar.js.
+  // Keeping two renderers on the same DOM node caused size changes and jumping.
+  const CONTEXT_UI_ENABLED = false;
 
   window.__codexLauncherUsageCore = window.__codexLauncherUsageCore || {
     seenLogIds: Object.create(null),
@@ -99,6 +102,7 @@
   }
 
   function ensureContext() {
+    if (!CONTEXT_UI_ENABLED) return null;
     ensureStyle();
     let n = document.getElementById(CTX_ID);
     if (!n) {
@@ -133,6 +137,7 @@
   }
 
   function renderContext() {
+    if (!CONTEXT_UI_ENABLED) return;
     const node = ensureContext();
     const used = Math.max(0, num(state.used));
     const limit = Math.max(1, num(state.limit) || 200000);

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Context Bar Preview</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #f5f5f7;
+      font: 14px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    }
+    .mock-toolbar { height: 46px; border-bottom: 1px solid #ddd; background: rgba(255,255,255,.8); }
+    .mock-content { padding: 72px 32px; color: #6e6e73; text-align: center; }
+  </style>
+  <script>
+    window.__codexLauncherRequest = async function () {
+      return { available: true, usedTokens: 48000, contextWindow: 200000 };
+    };
+  </script>
+</head>
+<body>
+  <div class="mock-toolbar"></div>
+  <div class="mock-content">macOS Codex 上下文条稳定性预览</div>
+  <script src="../frontend/inject/usage-core.js"></script>
+  <script src="../frontend/inject/context-bar.js"></script>
+</body>
+</html>

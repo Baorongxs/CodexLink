@@ -21,9 +21,16 @@
         "minWidth": 420,
         "minHeight": 620,
         "center": true,
-        "decorations": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 17
+        },
+        "acceptFirstMouse": true,
         "resizable": true,
-        "backgroundColor": "#eef3f9"
+        "backgroundColor": "#f5f5f7"
       }
     ]
   },
