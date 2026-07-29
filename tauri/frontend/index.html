@@ -1033,16 +1033,16 @@
       </header>
       <div class="modal-body">
         <div class="mac-install-note">
-          macOS 使用 DMG 或 PKG 安装。下载完成后，请将 Codex 拖入“应用程序”文件夹，或按安装器提示完成安装。
+          请选择当前 Mac 的芯片类型。CodexLink 会自动下载 DMG、挂载并安装到“应用程序”文件夹。
         </div>
         <div class="choice-list">
-          <button class="choice-btn" data-action="install-online">
-            <strong>打开 macOS 官方下载页</strong>
-            <span>下载适合 Apple 芯片或 Intel 芯片的 DMG 安装包</span>
+          <button class="choice-btn" data-action="install-apple-silicon">
+            <strong>安装 Apple 芯片版</strong>
+            <span>适用于 M1、M2、M3、M4、M5 等 Apple Silicon Mac</span>
           </button>
-          <button class="choice-btn" data-action="install-offline">
-            <strong>打开本地 DMG / PKG</strong>
-            <span>选择已经下载的安装包，交给 macOS 打开</span>
+          <button class="choice-btn" data-action="install-intel">
+            <strong>安装 Intel 芯片版</strong>
+            <span>适用于配备 Intel 处理器的 Mac</span>
           </button>
         </div>
       </div>
@@ -1778,7 +1778,7 @@
             send('refresh-balance', collectForm());
             return;
           }
-          if (action === 'install-online' || action === 'install-offline') {
+          if (action === 'install-apple-silicon' || action === 'install-intel') {
             closeModal('install-codex');
             setStepState('step-install-codex', 'running');
             send(action, collectForm());
@@ -1911,8 +1911,8 @@
             // {type:'step', id:'install-codex|import-api', state:'running|success|error'}
             const map = {
               'install-codex': 'step-install-codex',
-              'install-online': 'step-install-codex',
-              'install-offline': 'step-install-codex',
+              'install-apple-silicon': 'step-install-codex',
+              'install-intel': 'step-install-codex',
               'import-api': 'step-import-api'
             };
             const nodeId = map[data.id] || data.id;

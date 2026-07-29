@@ -13,6 +13,11 @@
     }
     .mock-toolbar { height: 46px; border-bottom: 1px solid #ddd; background: rgba(255,255,255,.8); }
     .mock-content { padding: 72px 32px; color: #6e6e73; text-align: center; }
+    .mock-composer {
+      position: fixed; left: 260px; right: 80px; bottom: 52px; height: 84px;
+      padding: 14px; box-sizing: border-box; border: 1px solid #d1d1d6;
+      border-radius: 18px; background: #fff; color: #8e8e93; outline: none;
+    }
   </style>
   <script>
     window.__codexLauncherRequest = async function () {
@@ -23,7 +28,18 @@
 <body>
   <div class="mock-toolbar"></div>
   <div class="mock-content">macOS Codex 上下文条稳定性预览</div>
+  <div class="mock-composer" contenteditable="true">输入消息</div>
   <script src="../frontend/inject/usage-core.js"></script>
   <script src="../frontend/inject/context-bar.js"></script>
+  <script>
+    setTimeout(function () {
+      window.__codexLauncherApplyRealtimeContext({
+        available: true,
+        usedTokens: 62000,
+        contextWindow: 200000,
+        realtime: true
+      });
+    }, 250);
+  </script>
 </body>
 </html>

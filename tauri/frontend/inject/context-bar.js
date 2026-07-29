@@ -1,7 +1,7 @@
 (() => {
   const NODE_ID = 'codex-launcher-context-bar';
   const STYLE_ID = 'codex-launcher-context-bar-style';
-  const OWNER = 'mac-stable-v2';
+  const OWNER = 'mac-composer-realtime-v3';
   const POLL_MS = 1600;
 
   window.__codexLauncherContextState = window.__codexLauncherContextState || {
@@ -9,7 +9,8 @@
     used: 0,
     limit: 0,
     threadId: '',
-    requestPending: false
+    requestPending: false,
+    lastRealtimeAt: 0
   };
   const state = window.__codexLauncherContextState;
 
@@ -26,7 +27,7 @@
     }
     style.textContent =
       '#' + NODE_ID + '{position:fixed!important;z-index:2147483645!important;' +
-      'top:10px!important;bottom:auto!important;left:50%!important;right:auto!important;' +
+      'top:auto!important;bottom:12px!important;left:50%!important;right:auto!important;' +
       'transform:translate3d(-50%,0,0)!important;width:176px!important;min-width:0!important;' +
       'max-width:176px!important;height:26px!important;padding:3px 7px!important;box-sizing:border-box!important;' +
       'border:1px solid rgba(60,60,67,.18)!important;border-radius:7px!important;' +
@@ -120,6 +121,65 @@
     node.title = '上下文已用 ' + (100 - remaining) + '%，剩余 ' + remaining + '%';
   }
 
+  function isVisible(element) {
+    if (!element || !element.isConnected) return false;
+    const rect = element.getBoundingClientRect();
+    if (rect.width < 240 || rect.height < 18 || rect.top < window.innerHeight * 0.35) return false;
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0;
+  }
+
+  function findComposerAnchor() {
+    const editors = document.querySelectorAll('textarea,[contenteditable="true"]');
+    let anchor = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < editors.length; i++) {
+      const editor = editors[i];
+      if (!isVisible(editor)) continue;
+      const rect = editor.getBoundingClientRect();
+      const score = rect.bottom * 3 + Math.min(rect.width, 1200);
+      if (score > bestScore) {
+        bestScore = score;
+        anchor = {
+          center: rect.left + rect.width / 2,
+          bottom: rect.bottom
+        };
+      }
+    }
+    return anchor;
+  }
+
+  function alignBelowComposer() {
+    const node = ensureNode();
+    const detected = findComposerAnchor();
+    const center = clamp(
+      detected == null ? window.innerWidth / 2 : detected.center,
+      96,
+      Math.max(96, window.innerWidth - 96)
+    );
+    const previous = Number(node.getAttribute('data-center-x'));
+    if (!isFinite(previous) || Math.abs(previous - center) >= 4) {
+      const rounded = Math.round(center);
+      node.style.setProperty('left', rounded + 'px', 'important');
+      node.setAttribute('data-center-x', String(rounded));
+    }
+
+    const desiredTop = detected == null ? null : Math.round(detected.bottom + 6);
+    if (desiredTop != null && desiredTop + 26 <= window.innerHeight - 8) {
+      const previousTop = Number(node.getAttribute('data-top-y'));
+      if (!isFinite(previousTop) || Math.abs(previousTop - desiredTop) >= 4) {
+        node.style.setProperty('top', desiredTop + 'px', 'important');
+        node.style.setProperty('bottom', 'auto', 'important');
+        node.setAttribute('data-top-y', String(desiredTop));
+      }
+    } else {
+      node.style.setProperty('top', 'auto', 'important');
+      node.style.setProperty('bottom', '12px', 'important');
+      node.removeAttribute('data-top-y');
+    }
+    node.setAttribute('data-anchor', detected == null ? 'window-bottom' : 'composer-bottom');
+  }
+
   function normalizeThreadId(value) {
     const text = String(value || '').trim();
     const match = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
@@ -147,8 +207,10 @@
     return normalizeThreadId(String(location.href || ''));
   }
 
-  function applySnapshot(snapshot) {
+  function applySnapshot(snapshot, source) {
     const data = snapshot && snapshot.data ? snapshot.data : snapshot;
+    const realtime = source === 'realtime' || !!(data && data.realtime);
+    if (!realtime && Date.now() - state.lastRealtimeAt < 4000) return;
     if (!data || data.available !== true) {
       state.available = false;
       state.used = 0;
@@ -162,6 +224,7 @@
     state.available = true;
     state.used = used;
     state.limit = limit;
+    if (realtime) state.lastRealtimeAt = Date.now();
     render();
   }
 
@@ -172,13 +235,14 @@
       state.available = false;
       state.used = 0;
       state.limit = 0;
+      state.lastRealtimeAt = 0;
       render();
     }
     if (state.requestPending || typeof window.__codexLauncherRequest !== 'function') return;
     state.requestPending = true;
     try {
       const response = await window.__codexLauncherRequest('/context/get', { threadId: detected }, 4500);
-      applySnapshot(response);
+      applySnapshot(response, 'native');
     } catch (_) {
       // Keep the last valid value during a transient bridge timeout to avoid flicker.
     } finally {
@@ -186,10 +250,16 @@
     }
   }
 
-  window.__codexLauncherRenderContext = applySnapshot;
-  window.__codexLauncherContextBarInstalled = true;
+  window.__codexLauncherRenderContext = function (snapshot) {
+    applySnapshot(snapshot, 'native');
+  };
+  window.__codexLauncherApplyRealtimeContext = function (snapshot) {
+    applySnapshot(snapshot, 'realtime');
+  };
+  window.__codexLauncherContextBarInstalled = OWNER;
 
   ensureNode();
+  alignBelowComposer();
   render();
   poll();
 
@@ -198,8 +268,13 @@
     setInterval(function () {
       try {
         ensureNode();
+        alignBelowComposer();
         poll();
       } catch (_) {}
     }, POLL_MS);
   }
+
+  window.addEventListener('resize', function () {
+    try { alignBelowComposer(); } catch (_) {}
+  }, { passive: true });
 })();

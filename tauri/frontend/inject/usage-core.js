@@ -137,10 +137,23 @@
   }
 
   function renderContext() {
-    if (!CONTEXT_UI_ENABLED) return;
-    const node = ensureContext();
     const used = Math.max(0, num(state.used));
     const limit = Math.max(1, num(state.limit) || 200000);
+    if (!CONTEXT_UI_ENABLED) {
+      const key = used + '|' + limit + '|' + String(state.model || '');
+      if (used > 0 && key !== state.lastForwardedContextKey &&
+          typeof window.__codexLauncherApplyRealtimeContext === 'function') {
+        state.lastForwardedContextKey = key;
+        window.__codexLauncherApplyRealtimeContext({
+          available: true,
+          usedTokens: used,
+          contextWindow: limit,
+          realtime: true
+        });
+      }
+      return;
+    }
+    const node = ensureContext();
     const percent = Math.max(0, Math.min(100, (used / limit) * 100));
     const remain = Math.max(0, limit - used);
     let level = 'ok';

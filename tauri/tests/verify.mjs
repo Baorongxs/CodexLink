@@ -22,12 +22,20 @@ assert.deepEqual(config.bundle.targets, ["app", "dmg"]);
 assert.equal(config.app.windows[0].decorations, true);
 assert.equal(config.app.windows[0].titleBarStyle, "Overlay");
 assert.equal(config.app.windows[0].hiddenTitle, true);
-assert.match(html, /打开 macOS 官方下载页/);
-assert.doesNotMatch(html, /微软商店|winget|静默安装/i);
+assert.match(html, /安装 Apple 芯片版/);
+assert.match(html, /安装 Intel 芯片版/);
+assert.doesNotMatch(html, /微软商店|winget|install-online|install-offline/i);
+assert.match(rust, /persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/);
+assert.match(rust, /persistent\.oaistatic\.com\/codex-app-prod\/Codex-latest-x64\.dmg/);
+assert.match(rust, /hdiutil/);
+assert.match(rust, /ditto/);
 assert.match(usageCore, /CONTEXT_UI_ENABLED = false/);
-assert.match(contextBar, /mac-stable-v2/);
+assert.match(usageCore, /__codexLauncherApplyRealtimeContext/);
+assert.match(contextBar, /mac-composer-realtime-v3/);
 assert.match(contextBar, /width:176px!important/);
-assert.doesNotMatch(contextBar, /getBoundingClientRect|findComposer/);
+assert.match(contextBar, /bottom:12px!important/);
+assert.match(contextBar, /alignBelowComposer/);
+assert.match(contextBar, /lastRealtimeAt/);
 
 const localOnly = new Set([
   "open-login",

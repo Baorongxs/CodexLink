@@ -286,10 +286,11 @@ async fn connect_cdp(app: AppHandle, url: &str) -> Result<CdpClient, String> {
         .await?;
     client
         .request(
-            "Runtime.evaluate",
-            json!({ "expression": bundle, "awaitPromise": false }),
+            "Page.reload",
+            json!({ "ignoreCache": false }),
         )
         .await?;
+    tokio::time::sleep(Duration::from_millis(350)).await;
     Ok(client)
 }
 
