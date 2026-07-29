@@ -31,7 +31,6 @@ use util::{
 };
 use vault::{import_managed_tokens, VaultState};
 use uuid::Uuid;
-use walkdir::WalkDir;
 
 const APP_NAME: &str = "CodexLink";
 const APP_VERSION: &str = "1.0.22";
@@ -323,9 +322,18 @@ async fn dispatch_action(
             Ok(())
         }
         "install-apple-silicon" => {
-            install_codex_dmg(app, CODEX_DMG_APPLE_SILICON, "Apple 芯片版").await
+            download_codex_dmg(app, CODEX_DMG_APPLE_SILICON, "Apple 芯片版", "Codex.dmg")
+                .await
         }
-        "install-intel" => install_codex_dmg(app, CODEX_DMG_INTEL, "Intel 芯片版").await,
+        "install-intel" => {
+            download_codex_dmg(
+                app,
+                CODEX_DMG_INTEL,
+                "Intel 芯片版",
+                "Codex-latest-x64.dmg",
+            )
+            .await
+        }
         "start-codex" => start_codex_action(app, state, payload, false).await,
         "restart-codex" => start_codex_action(app, state, payload, true).await,
         "stop-inject" => {
@@ -704,13 +712,14 @@ async fn repair_sidebar(app: &AppHandle, state: &AppState) -> Result<(), String>
     result
 }
 
-async fn install_codex_dmg(
+async fn download_codex_dmg(
     app: &AppHandle,
     download_url: &str,
     architecture_name: &str,
+    file_name: &str,
 ) -> Result<(), String> {
     post(app, json!({ "type": "step", "id": "install-codex", "state": "running" }));
-    post_status(app, &format!("正在安装 Codex {architecture_name}…"));
+    post_status(app, &format!("正在下载 Codex {architecture_name}…"));
     post_progress(
         app,
         &format!("下载 Codex {architecture_name}"),
@@ -721,14 +730,23 @@ async fn install_codex_dmg(
         false,
     );
 
-    let result = install_codex_dmg_inner(app, download_url, architecture_name).await;
+    let result =
+        download_codex_dmg_inner(app, download_url, architecture_name, file_name).await;
     match result {
-        Ok(installed_path) => {
+        Ok(downloaded_path) => {
+            let reveal = tokio::process::Command::new("/usr/bin/open")
+                .arg("-R")
+                .arg(&downloaded_path)
+                .output()
+                .await;
+            let revealed = reveal
+                .as_ref()
+                .is_ok_and(|output| output.status.success());
             post_progress(
                 app,
-                "Codex 安装完成",
+                "Codex 下载完成",
                 100,
-                &format!("已安装到 {}", installed_path.display()),
+                &format!("已保存到 {}", downloaded_path.display()),
                 false,
                 true,
                 false,
@@ -737,17 +755,39 @@ async fn install_codex_dmg(
                 app,
                 json!({ "type": "step", "id": "install-codex", "state": "success" }),
             );
-            post_status(app, "Codex 已安装");
-            post_toast(app, "Codex 已自动安装并打开", false);
+            post_status(app, "Codex 安装包已下载");
+            post_toast(
+                app,
+                if revealed {
+                    "下载完成，请在 Finder 中双击 DMG 安装"
+                } else {
+                    "下载完成，请到“下载”文件夹双击 DMG 安装"
+                },
+                false,
+            );
             post_log(
                 app,
-                &format!("Codex {architecture_name}已安装到 {}", installed_path.display()),
+                &format!(
+                    "Codex {architecture_name}安装包已下载到 {}",
+                    downloaded_path.display()
+                ),
                 "ok",
             );
-            if let Err(error) = open::that(&installed_path) {
+            if !revealed {
+                let detail = match &reveal {
+                    Err(error) => error.to_string(),
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                        if stderr.is_empty() {
+                            format!("Finder 返回状态 {}", output.status)
+                        } else {
+                            stderr
+                        }
+                    }
+                };
                 post_log(
                     app,
-                    &format!("Codex 已安装，但自动打开失败：{error}"),
+                    &format!("安装包已下载，但无法在 Finder 中显示：{detail}"),
                     "info",
                 );
             }
@@ -756,7 +796,7 @@ async fn install_codex_dmg(
         Err(error) => {
             post_progress(
                 app,
-                "Codex 安装失败",
+                "Codex 下载失败",
                 100,
                 &public_message(&error),
                 false,
@@ -767,19 +807,26 @@ async fn install_codex_dmg(
                 app,
                 json!({ "type": "step", "id": "install-codex", "state": "error" }),
             );
-            post_status(app, "Codex 安装失败");
+            post_status(app, "Codex 下载失败");
             Err(error)
         }
     }
 }
 
-async fn install_codex_dmg_inner(
+async fn download_codex_dmg_inner(
     app: &AppHandle,
     download_url: &str,
     architecture_name: &str,
+    file_name: &str,
 ) -> Result<PathBuf, String> {
-    let install_id = Uuid::new_v4().simple().to_string();
-    let dmg_path = std::env::temp_dir().join(format!("CodexLink-Codex-{install_id}.dmg"));
+    let download_dir = dirs::download_dir().unwrap_or(home_dir()?.join("Downloads"));
+    fs::create_dir_all(&download_dir)
+        .map_err(|error| format!("无法创建下载文件夹：{error}"))?;
+    let dmg_path = available_download_path(&download_dir, file_name);
+    let partial_path = download_dir.join(format!(
+        ".CodexLink-{}.part",
+        Uuid::new_v4().simple()
+    ));
     let client = Client::builder()
         .redirect(reqwest::redirect::Policy::limited(10))
         .connect_timeout(std::time::Duration::from_secs(30))
@@ -803,22 +850,31 @@ async fn install_codex_dmg_inner(
     if total.is_some_and(|value| value > 1_500_000_000) {
         return Err("Codex 安装包大小异常，已停止下载。".to_string());
     }
-    let mut file = tokio::fs::File::create(&dmg_path)
+    let mut file = tokio::fs::File::create(&partial_path)
         .await
-        .map_err(|error| format!("无法创建临时安装包：{error}"))?;
+        .map_err(|error| format!("无法创建下载文件：{error}"))?;
     let mut stream = response.bytes_stream();
     let mut downloaded = 0_u64;
     let mut last_percent = 5_u32;
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|error| format!("下载 Codex 失败：{error}"))?;
-        file.write_all(&chunk)
-            .await
-            .map_err(|error| format!("写入 Codex 安装包失败：{error}"))?;
+        let chunk = match chunk {
+            Ok(value) => value,
+            Err(error) => {
+                drop(file);
+                let _ = tokio::fs::remove_file(&partial_path).await;
+                return Err(format!("下载 Codex 失败：{error}"));
+            }
+        };
+        if let Err(error) = file.write_all(&chunk).await {
+            drop(file);
+            let _ = tokio::fs::remove_file(&partial_path).await;
+            return Err(format!("写入 Codex 安装包失败：{error}"));
+        }
         downloaded += chunk.len() as u64;
         let percent = total
             .filter(|value| *value > 0)
-            .map(|value| 5 + ((downloaded.saturating_mul(50) / value).min(50) as u32))
-            .unwrap_or(30);
+            .map(|value| 5 + ((downloaded.saturating_mul(90) / value).min(90) as u32))
+            .unwrap_or(50);
         if percent >= last_percent.saturating_add(2) {
             last_percent = percent;
             let detail = total
@@ -843,181 +899,46 @@ async fn install_codex_dmg_inner(
             );
         }
     }
-    file.flush()
-        .await
-        .map_err(|error| format!("保存 Codex 安装包失败：{error}"))?;
+    if let Err(error) = file.flush().await {
+        drop(file);
+        let _ = tokio::fs::remove_file(&partial_path).await;
+        return Err(format!("保存 Codex 安装包失败：{error}"));
+    }
     drop(file);
     if downloaded < 1_048_576 {
-        let _ = tokio::fs::remove_file(&dmg_path).await;
+        let _ = tokio::fs::remove_file(&partial_path).await;
         return Err("下载到的 Codex 安装包不完整。".to_string());
     }
-
-    post_progress(
-        app,
-        "挂载 Codex 安装镜像",
-        60,
-        "正在打开 DMG…",
-        true,
-        false,
-        false,
-    );
-    let attach = tokio::process::Command::new("/usr/bin/hdiutil")
-        .arg("attach")
-        .arg("-nobrowse")
-        .arg("-readonly")
-        .arg("-noautoopen")
-        .arg(&dmg_path)
-        .output()
+    tokio::fs::rename(&partial_path, &dmg_path)
         .await
-        .map_err(|error| format!("无法运行 hdiutil：{error}"))?;
-    if !attach.status.success() {
-        let _ = tokio::fs::remove_file(&dmg_path).await;
-        return Err(format!(
-            "挂载 Codex DMG 失败：{}",
-            String::from_utf8_lossy(&attach.stderr).trim()
-        ));
-    }
-    let attach_text = String::from_utf8_lossy(&attach.stdout);
-    let mount_path = attach_text
-        .lines()
-        .filter_map(|line| line.find("/Volumes/").map(|index| line[index..].trim()))
-        .last()
-        .map(PathBuf::from)
-        .ok_or_else(|| "Codex DMG 已打开，但未找到挂载目录。".to_string())?;
-
-    let install_result = async {
-        let source_app = find_app_bundle(&mount_path)?;
-        post_progress(
-            app,
-            "安装 Codex",
-            72,
-            "正在复制到“应用程序”文件夹…",
-            true,
-            false,
-            false,
-        );
-
-        let system_applications = PathBuf::from("/Applications");
-        match install_app_bundle(&source_app, &system_applications, &install_id).await {
-            Ok(path) => Ok(path),
-            Err(system_error) => {
-                let user_applications = home_dir()?.join("Applications");
-                post_log(
-                    app,
-                    &format!(
-                        "无法写入系统“应用程序”文件夹，改为用户目录：{}",
-                        public_message(&system_error)
-                    ),
-                    "info",
-                );
-                install_app_bundle(&source_app, &user_applications, &install_id)
-                    .await
-                    .map_err(|user_error| {
-                        format!(
-                            "自动安装失败。系统目录：{}；用户目录：{}",
-                            public_message(system_error),
-                            public_message(user_error)
-                        )
-                    })
-            }
-        }
-    }
-    .await;
-
-    post_progress(
-        app,
-        "整理安装文件",
-        94,
-        "正在卸载 DMG 并清理临时文件…",
-        true,
-        false,
-        false,
-    );
-    let detach = tokio::process::Command::new("/usr/bin/hdiutil")
-        .arg("detach")
-        .arg(&mount_path)
-        .output()
-        .await;
-    if detach.as_ref().is_err_and(|_| true)
-        || detach
-            .as_ref()
-            .is_ok_and(|output| !output.status.success())
-    {
-        post_log(app, "Codex 已复制，但 DMG 未能自动卸载，可在 Finder 中推出。", "info");
-    }
-    let _ = tokio::fs::remove_file(&dmg_path).await;
-    install_result
+        .map_err(|error| {
+            let _ = fs::remove_file(&partial_path);
+            format!("无法完成 Codex 安装包下载：{error}")
+        })?;
+    Ok(dmg_path)
 }
 
-fn find_app_bundle(mount_path: &Path) -> Result<PathBuf, String> {
-    WalkDir::new(mount_path)
-        .min_depth(1)
-        .max_depth(3)
-        .into_iter()
-        .filter_map(Result::ok)
-        .find(|entry| {
-            entry.file_type().is_dir()
-                && entry
-                    .path()
-                    .extension()
-                    .and_then(|value| value.to_str())
-                    .is_some_and(|value| value.eq_ignore_ascii_case("app"))
-        })
-        .map(|entry| entry.into_path())
-        .ok_or_else(|| "Codex DMG 中没有找到应用程序。".to_string())
-}
-
-async fn install_app_bundle(
-    source_app: &Path,
-    applications_dir: &Path,
-    install_id: &str,
-) -> Result<PathBuf, String> {
-    fs::create_dir_all(applications_dir)
-        .map_err(|error| format!("无法创建 {}：{error}", applications_dir.display()))?;
-    let app_name = source_app
-        .file_name()
-        .ok_or_else(|| "Codex 应用名称无效。".to_string())?;
-    let destination = applications_dir.join(app_name);
-    let staging = applications_dir.join(format!(".CodexLink-new-{install_id}.app"));
-    let backup = applications_dir.join(format!(".CodexLink-old-{install_id}.app"));
-    let _ = fs::remove_dir_all(&staging);
-    let _ = fs::remove_dir_all(&backup);
-
-    let copy = tokio::process::Command::new("/usr/bin/ditto")
-        .arg("--rsrc")
-        .arg("--extattr")
-        .arg("--qtn")
-        .arg(source_app)
-        .arg(&staging)
-        .output()
-        .await
-        .map_err(|error| format!("无法运行 ditto：{error}"))?;
-    if !copy.status.success() {
-        let _ = fs::remove_dir_all(&staging);
-        return Err(format!(
-            "复制 Codex 失败：{}",
-            String::from_utf8_lossy(&copy.stderr).trim()
-        ));
+fn available_download_path(download_dir: &Path, file_name: &str) -> PathBuf {
+    let preferred = download_dir.join(file_name);
+    if !preferred.exists() {
+        return preferred;
     }
-
-    let had_existing = destination.exists();
-    if had_existing {
-        if let Err(error) = fs::rename(&destination, &backup) {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(format!("无法替换现有 Codex：{error}"));
+    let path = Path::new(file_name);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Codex");
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("dmg");
+    for index in 1..10_000 {
+        let candidate = download_dir.join(format!("{stem} ({index}).{extension}"));
+        if !candidate.exists() {
+            return candidate;
         }
     }
-    if let Err(error) = fs::rename(&staging, &destination) {
-        if had_existing {
-            let _ = fs::rename(&backup, &destination);
-        }
-        let _ = fs::remove_dir_all(&staging);
-        return Err(format!("无法完成 Codex 安装：{error}"));
-    }
-    if had_existing {
-        let _ = fs::remove_dir_all(&backup);
-    }
-    Ok(destination)
+    download_dir.join(format!("{stem}-{}.{}", Uuid::new_v4().simple(), extension))
 }
 
 async fn check_for_updates(
