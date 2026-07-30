@@ -1,0 +1,93 @@
+{
+  "name": "codex-weekly-monitor",
+  "version": "3.0.0",
+  "description": "适用于 macOS 的 Codex 周额度与用量悬浮监控",
+  "main": "main.js",
+  "author": "Codex",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/static.test.js",
+    "qa": "electron . --qa-self-test",
+    "qa:capture": "electron . --qa-capture-expanded",
+    "dist:mac": "electron-builder --mac --universal",
+    "dist:mac:dir": "electron-builder --mac dir --universal",
+    "dist:mac:ci": "bash scripts/build-dmg-ci.sh"
+  },
+  "devDependencies": {
+    "@electron/packager": "18.4.4",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.codexweeklymonitor.macos",
+    "productName": "Codex 周额度监控",
+    "asar": true,
+    "compression": "maximum",
+    "copyright": "Copyright © 2026 Codex 周额度监控",
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "directories": {
+      "output": "../../outputs"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "build/icon.png"
+    ],
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.utilities",
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "artifactName": "2026-07-30_Codex周额度监控_macOS_v3.0_${arch}.${ext}",
+      "extendInfo": {
+        "LSMinimumSystemVersion": "12.0",
+        "NSHighResolutionCapable": true,
+        "NSSupportsAutomaticGraphicsSwitching": true,
+        "NSHumanReadableCopyright": "Copyright © 2026 Codex 周额度监控"
+      }
+    },
+    "dmg": {
+      "title": "Codex 周额度监控 3.0",
+      "sign": false,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 390,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}

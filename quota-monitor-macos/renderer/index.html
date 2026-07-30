@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codex 周额度监控</title>
+  <style>
+    :root { --quota-color: #10b981; }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent !important;
+      color: #e4e4e7;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      user-select: none;
+    }
+
+    button {
+      border: 0;
+      padding: 0;
+      color: inherit;
+      font: inherit;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    [role="button"]:focus-visible {
+      outline: 2px solid rgba(16, 185, 129, .9);
+      outline-offset: 2px;
+    }
+
+    input[type="range"] { accent-color: var(--quota-color); }
+
+    .code-font {
+      font-family: "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #floating-widget {
+      position: absolute;
+      z-index: 50;
+      inset: 0;
+      cursor: grab;
+    }
+
+    #floating-widget:active { cursor: grabbing; }
+
+    #widget-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .minimal-orb {
+      background: rgba(15, 15, 20, .60);
+      border: 0;
+      box-shadow: none;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+
+    #collapsed-orb {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      transition: border-color .2s ease, background .2s ease, opacity .18s ease;
+    }
+
+    #collapsed-orb:hover {
+      background: rgba(18, 18, 24, .70);
+    }
+
+    #collapsed-orb svg.progress-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      padding: 4px;
+    }
+
+    .progress-ring__circle {
+      transition: stroke-dashoffset .4s ease, stroke .3s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+
+    .orb-center {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    #orb-percent-text {
+      color: var(--quota-color);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .minimal-panel {
+      background: rgba(12, 12, 16, .65);
+      border: 1px solid rgba(255, 255, 255, .12);
+      box-shadow: 0 12px 30px -8px rgba(0, 0, 0, .65);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    #expanded-panel {
+      position: absolute;
+      z-index: 50;
+      top: 0;
+      left: 0;
+      width: 290px;
+      height: 266px;
+      padding: 14px;
+      border-radius: 12px;
+      opacity: 0;
+      transform: scale(.95);
+      transform-origin: top right;
+      pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    body.expanded #collapsed-orb {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    body.expanded #expanded-panel {
+      opacity: 1;
+      transform: scale(1);
+      pointer-events: auto;
+    }
+
+    body.open-right.open-down #expanded-panel { transform-origin: top left; }
+    body.open-left.open-down #expanded-panel { transform-origin: top right; }
+    body.open-right.open-up #expanded-panel { transform-origin: bottom left; }
+    body.open-left.open-up #expanded-panel { transform-origin: bottom right; }
+
+    .weekly-section { margin-bottom: 14px; }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .weekly-head { margin-bottom: 8px; }
+
+    .section-title {
+      color: #a1a1aa;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+
+    .head-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #weekly-quota-percent {
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    #pin-btn {
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 5px;
+      background: transparent;
+      color: #a1a1aa;
+      cursor: pointer;
+      transition: color .15s ease, background .15s ease;
+    }
+
+    #pin-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, .10);
+    }
+
+    #pin-btn.active {
+      color: #000;
+      background: #fff;
+    }
+
+    #pin-btn svg {
+      width: 11px;
+      height: 11px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .10);
+    }
+
+    #weekly-progress-bar {
+      width: 0;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--quota-color);
+      transition: width .3s ease;
+    }
+
+    .reset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: stretch;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .info-card {
+      min-width: 0;
+      min-height: 61px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1px;
+      padding: 9px 10px;
+      border: 1px solid rgba(255, 255, 255, .05);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, .40);
+    }
+
+    .info-label {
+      margin: 0;
+      color: #a1a1aa;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 15px;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .info-value {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin: 0;
+      overflow: hidden;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 15px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .info-value svg {
+      width: 10px;
+      height: 10px;
+      flex: 0 0 auto;
+      color: #a1a1aa;
+    }
+
+    .reset-pair {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .reset-divider {
+      color: #71717a;
+    }
+
+    .usage-section {
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, .10);
+    }
+
+    .usage-card {
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, .05);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, .40);
+    }
+
+    .usage-head { margin-bottom: 10px; }
+
+    .total-text {
+      color: #a1a1aa;
+      font-size: 12px;
+    }
+
+    #total-token-value {
+      margin-left: 4px;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .usage-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .daily-block {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .daily-label {
+      margin-bottom: 4px;
+      color: #a1a1aa;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .7px;
+    }
+
+    #daily-token-value {
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    #bar-chart-container {
+      height: 48px;
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      padding-top: 2px;
+    }
+
+    .bar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .bar-track {
+      width: 12px;
+      height: 36px;
+      display: flex;
+      align-items: flex-end;
+      overflow: hidden;
+      padding: 1px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .10);
+    }
+
+    .bar-pill {
+      width: 100%;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .30);
+      transition: height .3s ease, background .2s ease;
+    }
+
+    .bar-col.today .bar-pill { background: #fff; }
+
+    .bar-day {
+      color: #a1a1aa;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .bar-col.today .bar-day {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    [hidden] { display: none !important; }
+
+    .settings-head {
+      margin-bottom: 14px;
+    }
+
+    .settings-title {
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    #settings-close-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, .08);
+      color: #d4d4d8;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 22px;
+    }
+
+    #settings-close-btn:hover {
+      background: rgba(255, 255, 255, .14);
+      color: #fff;
+    }
+
+    .settings-card {
+      padding: 14px;
+      border: 1px solid rgba(255, 255, 255, .06);
+      border-radius: 9px;
+      background: rgba(0, 0, 0, .40);
+    }
+
+    .settings-label {
+      color: #d4d4d8;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    #opacity-value {
+      color: var(--quota-color);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    #opacity-slider {
+      width: 100%;
+      height: 4px;
+      margin: 16px 0 10px;
+      accent-color: var(--quota-color);
+      cursor: pointer;
+    }
+
+    .range-hints {
+      display: flex;
+      justify-content: space-between;
+      color: #71717a;
+      font-size: 10px;
+    }
+
+    .settings-note {
+      margin: 10px 0 16px;
+      color: #71717a;
+      font-size: 10px;
+      text-align: center;
+    }
+
+    #exit-btn {
+      width: 100%;
+      height: 34px;
+      border-radius: 8px;
+      background: rgba(244, 63, 94, .12);
+      color: #fb7185;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    #exit-btn:hover {
+      background: rgba(244, 63, 94, .20);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="floating-widget">
+    <div id="widget-wrapper">
+      <div id="collapsed-orb" class="minimal-orb pywebview-drag-region" title="Codex 周额度" role="button" tabindex="0" aria-label="展开 Codex 周额度监控">
+        <svg class="progress-svg" viewBox="0 0 60 60">
+          <circle stroke-width="3.5" stroke="rgba(255,255,255,.08)" fill="transparent" r="25" cx="30" cy="30"></circle>
+          <circle id="orb-progress" class="progress-ring__circle" stroke-width="3.5" stroke-dasharray="157" stroke-dashoffset="157" stroke-linecap="round" stroke="#10b981" fill="transparent" r="25" cx="30" cy="30"></circle>
+        </svg>
+        <div class="orb-center">
+          <span id="orb-percent-text" class="code-font">--</span>
+        </div>
+      </div>
+
+      <div id="expanded-panel" class="minimal-panel">
+        <div id="dashboard-view">
+          <div class="weekly-section">
+          <div class="row weekly-head">
+            <span class="section-title">周额度</span>
+            <div class="head-right">
+              <span id="weekly-quota-percent" class="code-font">--</span>
+              <button id="pin-btn" title="固定" aria-label="固定展开面板" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6l-1 5 4 4v2h-5v7l-1 1-1-1v-7H6v-2l4-4z"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="progress-track">
+            <div id="weekly-progress-bar"></div>
+          </div>
+
+          <div class="reset-grid">
+            <div class="info-card">
+              <p class="info-label">距离下次重置</p>
+              <p id="reset-countdown" class="info-value">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                <span>--</span>
+              </p>
+            </div>
+            <div class="info-card">
+              <p class="info-label">重置次数 / 重置券</p>
+              <p id="reset-count-text" class="info-value">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2 5"></path><path d="M20 5v6h-6"></path></svg>
+                <span class="reset-pair">
+                  <span id="reset-count-value">--</span>
+                  <span class="reset-divider">/</span>
+                  <span id="reset-voucher-value">--</span>
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+          <div class="usage-section">
+            <div class="usage-card">
+              <div class="row usage-head">
+                <span class="section-title">用量</span>
+                <span class="total-text code-font">总量:<span id="total-token-value">--</span></span>
+              </div>
+              <div class="usage-content">
+                <div class="daily-block">
+                  <span class="daily-label">本日</span>
+                  <span id="daily-token-value" class="code-font">--</span>
+                </div>
+                <div id="bar-chart-container"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="settings-view" hidden>
+          <div class="row settings-head">
+            <span class="settings-title">设置</span>
+            <button id="settings-close-btn" title="关闭设置" aria-label="关闭设置">×</button>
+          </div>
+          <div class="settings-card">
+            <div class="row">
+              <span class="settings-label">不透明度</span>
+              <span id="opacity-value" class="code-font">100%</span>
+            </div>
+            <input id="opacity-slider" type="range" min="35" max="100" step="1" value="100">
+            <div class="range-hints">
+              <span>更透明</span>
+              <span>更清晰</span>
+            </div>
+          </div>
+          <p class="settings-note">调整后自动保存</p>
+          <button id="exit-btn">退出程序</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const startExpanded = window.location.hash === "#expanded";
+    let expanded = startExpanded;
+    let pinned = false;
+    let expandTimer = null;
+    let collapseTimer = null;
+    let dragging = false;
+    let dragMoved = false;
+    let dragStartPoint = null;
+    let settingsOpen = false;
+
+    document.body.classList.toggle("expanded", startExpanded);
+
+    function percentText(value) {
+      if (value === null || value === undefined) return "--";
+      const number = Number(value);
+      return `${number.toFixed(number % 1 ? 1 : 0)}%`;
+    }
+
+    function setStatusColor(remaining) {
+      let color = "#10b981";
+      if (remaining <= 10) color = "#f43f5e";
+      else if (remaining <= 30) color = "#f59e0b";
+      document.documentElement.style.setProperty("--quota-color", color);
+      $("orb-progress").setAttribute("stroke", color);
+      $("orb-progress").style.stroke = color;
+      $("orb-percent-text").style.color = color;
+      $("weekly-quota-percent").style.color = color;
+      $("weekly-progress-bar").style.backgroundColor = color;
+    }
+
+    function renderChart(items) {
+      const container = $("bar-chart-container");
+      container.innerHTML = "";
+      const max = Math.max(1, ...items.map(item => item.tokens || 0));
+      items.forEach(item => {
+        const date = new Date(`${item.date}T12:00:00`);
+        const labels = ["S", "M", "T", "W", "T", "F", "S"];
+        const height = item.tokens ? Math.max(15, Math.round((item.tokens / max) * 100)) : 8;
+        const column = document.createElement("div");
+        column.className = `bar-col${item.today ? " today" : ""}`;
+        column.title = `${item.date}: ${item.text} Token`;
+        column.innerHTML = `
+          <div class="bar-track"><div class="bar-pill" style="height:${height}%"></div></div>
+          <span class="bar-day">${labels[date.getDay()]}</span>
+        `;
+        container.appendChild(column);
+      });
+    }
+
+    function render(data) {
+      const available = Boolean(data.quota_available);
+      const remaining = available ? Number(data.quota_remaining_percent) : 100;
+      const text = available ? percentText(remaining) : "--";
+      const circumference = 157;
+
+      $("orb-percent-text").textContent = text;
+      $("weekly-quota-percent").textContent = text;
+      $("weekly-progress-bar").style.width = available ? `${remaining}%` : "0%";
+      $("orb-progress").style.strokeDashoffset = available
+        ? circumference - (remaining / 100) * circumference
+        : circumference;
+      setStatusColor(remaining);
+
+      $("reset-countdown").querySelector("span").textContent = data.reset_countdown || "--";
+      $("reset-countdown").title = data.reset_time || "";
+      const hasResetCount =
+        data.reset_count !== null &&
+        data.reset_count !== undefined &&
+        Number.isFinite(Number(data.reset_count));
+      const resetCount = Number(data.reset_count);
+      $("reset-count-value").textContent =
+        hasResetCount && resetCount >= 0 ? `${resetCount} 次` : "--";
+      const voucherValue = data.reset_vouchers;
+      const voucherCount = Number(voucherValue);
+      $("reset-voucher-value").textContent =
+        voucherValue === "∞"
+          ? "∞ 张"
+          : voucherValue !== null &&
+              voucherValue !== undefined &&
+              Number.isFinite(voucherCount) &&
+              voucherCount >= 0
+            ? `${voucherCount} 张`
+            : "--";
+      $("reset-count-text").title = data.reset_rule || "";
+      $("daily-token-value").textContent = data.today_tokens_text || "--";
+      $("total-token-value").textContent = data.total_tokens_text || "--";
+      renderChart(data.chart || []);
+    }
+
+    async function setExpanded(next) {
+      if (next === expanded || dragging) return;
+      clearTimeout(collapseTimer);
+      const previous = expanded;
+      expanded = Boolean(next);
+      document.body.classList.toggle("expanded", expanded);
+      const result = await window.codexMonitor.setExpanded(next);
+      if (result && result.ok) {
+        expanded = Boolean(result.expanded);
+        if (result.horizontal) {
+          document.body.classList.toggle("open-right", result.horizontal === "right");
+          document.body.classList.toggle("open-left", result.horizontal === "left");
+        }
+        if (result.vertical) {
+          document.body.classList.toggle("open-down", result.vertical === "down");
+          document.body.classList.toggle("open-up", result.vertical === "up");
+        }
+        document.body.classList.toggle("expanded", expanded);
+      } else {
+        expanded = previous;
+        document.body.classList.toggle("expanded", expanded);
+      }
+    }
+
+    function scheduleCollapse() {
+      clearTimeout(collapseTimer);
+      if (pinned || dragging || settingsOpen) return;
+      collapseTimer = setTimeout(() => {
+        collapseTimer = null;
+        setExpanded(false);
+      }, 250);
+    }
+
+    let qaMode = false;
+
+    $("collapsed-orb").addEventListener("mouseenter", (event) => {
+      if (qaMode && event.isTrusted) return;
+      clearTimeout(expandTimer);
+      if (!dragging) {
+        expandTimer = setTimeout(() => setExpanded(true), 180);
+      }
+    });
+
+    $("collapsed-orb").addEventListener("mouseleave", (event) => {
+      if (qaMode && event.isTrusted) return;
+      if (!expanded) clearTimeout(expandTimer);
+    });
+
+    $("collapsed-orb").addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!dragMoved) setExpanded(true);
+    });
+
+    $("collapsed-orb").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setExpanded(true);
+      }
+    });
+
+    async function openSettings(event) {
+      event?.preventDefault();
+      event?.stopPropagation();
+      clearTimeout(expandTimer);
+      clearTimeout(collapseTimer);
+      settingsOpen = true;
+      await setExpanded(true);
+      $("dashboard-view").hidden = true;
+      $("settings-view").hidden = false;
+    }
+
+    function closeSettings() {
+      settingsOpen = false;
+      $("settings-view").hidden = true;
+      $("dashboard-view").hidden = false;
+      scheduleCollapse();
+    }
+
+    $("collapsed-orb").addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openSettings(event);
+    });
+    $("expanded-panel").addEventListener("contextmenu", openSettings);
+
+    $("expanded-panel").addEventListener("mouseenter", (event) => {
+      if (qaMode && event.isTrusted) return;
+      clearTimeout(collapseTimer);
+    });
+    $("expanded-panel").addEventListener("mouseleave", (event) => {
+      if (qaMode && event.isTrusted) return;
+      scheduleCollapse();
+    });
+
+    async function applyPinned(nextPinned, syncMain = true) {
+      pinned = Boolean(nextPinned);
+      $("pin-btn").classList.toggle("active", pinned);
+      $("pin-btn").setAttribute("aria-pressed", String(pinned));
+      if (syncMain) await window.codexMonitor.setPinned(pinned);
+      if (pinned) await setExpanded(true);
+      else scheduleCollapse();
+    }
+
+    $("pin-btn").addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await applyPinned(!pinned);
+    });
+
+    $("settings-close-btn").addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeSettings();
+    });
+
+    $("opacity-slider").addEventListener("input", (event) => {
+      const value = Math.max(35, Math.min(100, Number(event.target.value) || 100));
+      $("opacity-value").textContent = `${value}%`;
+      window.codexMonitor.setOpacity(value / 100);
+    });
+
+    $("opacity-slider").addEventListener("change", (event) => {
+      const value = Math.max(35, Math.min(100, Number(event.target.value) || 100));
+      localStorage.setItem("monitor-opacity", String(value));
+    });
+
+    $("exit-btn").addEventListener("click", (event) => {
+      event.stopPropagation();
+      window.codexMonitor.quit();
+    });
+
+    async function beginDrag(event) {
+      if (event.button !== 0 || event.target.closest("button, input")) return;
+      clearTimeout(expandTimer);
+      clearTimeout(collapseTimer);
+      dragging = true;
+      dragMoved = false;
+      dragStartPoint = { x: event.screenX, y: event.screenY };
+      const result = await window.codexMonitor.beginDrag({
+        screenX: event.screenX,
+        screenY: event.screenY
+      });
+      if (!result?.ok) {
+        dragging = false;
+        dragStartPoint = null;
+      }
+    }
+
+    function moveDrag(event) {
+      if (!dragging || !dragStartPoint) return;
+      if (
+        Math.abs(event.screenX - dragStartPoint.x) > 2 ||
+        Math.abs(event.screenY - dragStartPoint.y) > 2
+      ) {
+        dragMoved = true;
+      }
+      window.codexMonitor.dragMove({
+        screenX: event.screenX,
+        screenY: event.screenY
+      });
+    }
+
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      dragStartPoint = null;
+      window.codexMonitor.endDrag();
+      setTimeout(() => {
+        dragMoved = false;
+      }, 80);
+    }
+
+    $("collapsed-orb").addEventListener("mousedown", beginDrag);
+    $("expanded-panel").addEventListener("mousedown", beginDrag);
+    document.addEventListener("mousemove", moveDrag);
+    document.addEventListener("mouseup", endDrag);
+    window.addEventListener("blur", endDrag);
+
+    window.codexMonitor.onSnapshot(render);
+    window.codexMonitor.onAppCommand((command, payload = {}) => {
+      if (command === "open-settings") {
+        openSettings();
+      } else if (command === "set-pinned") {
+        applyPinned(Boolean(payload.pinned), false);
+      }
+    });
+    window.codexMonitor.getSnapshot().then(render);
+
+    const savedOpacity = Math.max(
+      35,
+      Math.min(100, Number(localStorage.getItem("monitor-opacity")) || 100)
+    );
+    $("opacity-slider").value = String(savedOpacity);
+    $("opacity-value").textContent = `${savedOpacity}%`;
+    window.codexMonitor.setOpacity(savedOpacity / 100);
+  </script>
+</body>
+</html>
