@@ -38,9 +38,6 @@ jobs:
           cache: npm
           cache-dependency-path: quota-monitor-macos/package-lock.json
 
-      - name: Restore app icon
-        run: /usr/bin/base64 -D build/icon.png.b64 > build/icon.png
-
       - name: Install dependencies
         run: npm ci
 
