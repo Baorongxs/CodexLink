@@ -15,8 +15,10 @@ STAGE_DIR="$DIST_DIR/dmg-stage-$ARCH"
 MOUNT_DIR="$DIST_DIR/dmg-mount-$ARCH"
 OUTPUT_DIR="$ROOT_DIR/output"
 DMG_PATH="$OUTPUT_DIR/2026-07-30_Codex周额度监控_macOS安装版_${ARCH}_v3.0.dmg"
+APP_ZIP_PATH="$OUTPUT_DIR/2026-07-30_Codex周额度监控_macOS应用程序_${ARCH}_v3.0.zip"
 ICONSET="$DIST_DIR/CodexMonitor.iconset"
 ICNS_PATH="$DIST_DIR/CodexMonitor.icns"
+ZIP_VERIFY_DIR="$DIST_DIR/zip-verify-$ARCH"
 
 rm -rf "$DIST_DIR" "$OUTPUT_DIR"
 mkdir -p "$DIST_DIR" "$OUTPUT_DIR" "$ICONSET"
@@ -76,6 +78,19 @@ if [[ " $APP_ARCHS " != *" $EXPECTED_ARCH "* ]]; then
   exit 1
 fi
 
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_ZIP_PATH"
+mkdir -p "$ZIP_VERIFY_DIR"
+/usr/bin/ditto -x -k "$APP_ZIP_PATH" "$ZIP_VERIFY_DIR"
+test -d "$ZIP_VERIFY_DIR/Codex 周额度监控.app"
+/usr/bin/codesign --verify --deep --strict --verbose=2 \
+  "$ZIP_VERIFY_DIR/Codex 周额度监控.app"
+ZIP_APP_ARCHS="$(/usr/bin/lipo -archs \
+  "$ZIP_VERIFY_DIR/Codex 周额度监控.app/Contents/MacOS/Codex 周额度监控")"
+if [[ " $ZIP_APP_ARCHS " != *" $EXPECTED_ARCH "* ]]; then
+  echo "ZIP 中的可执行文件架构错误：$ZIP_APP_ARCHS" >&2
+  exit 1
+fi
+
 mkdir -p "$STAGE_DIR"
 /usr/bin/ditto "$APP_PATH" "$STAGE_DIR/Codex 周额度监控.app"
 ln -s /Applications "$STAGE_DIR/Applications"
@@ -104,5 +119,9 @@ cleanup
 trap - EXIT
 
 /usr/bin/shasum -a 256 "$DMG_PATH" > "$DMG_PATH.sha256"
+/usr/bin/shasum -a 256 "$APP_ZIP_PATH" > "$APP_ZIP_PATH.sha256"
 /usr/bin/split -b 30m "$DMG_PATH" "$DMG_PATH.part-"
-ls -lh "$DMG_PATH" "$DMG_PATH.sha256" "$DMG_PATH".part-*
+/usr/bin/split -b 30m "$APP_ZIP_PATH" "$APP_ZIP_PATH.part-"
+ls -lh \
+  "$DMG_PATH" "$DMG_PATH.sha256" "$DMG_PATH".part-* \
+  "$APP_ZIP_PATH" "$APP_ZIP_PATH.sha256" "$APP_ZIP_PATH".part-*
