@@ -81,7 +81,7 @@ class AccountService {
   }
 
   async rawRequest(baseUrl, relativePath, { method = 'GET', body, authenticated = false } = {}) {
-    const headers = { Accept: 'application/json', 'User-Agent': 'CodexLink/1.0.22 macOS' };
+    const headers = { Accept: 'application/json', 'User-Agent': 'CodexLink/1.0.23 macOS' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (authenticated) {
       this.ensureLoggedIn();

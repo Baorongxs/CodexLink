@@ -1,6 +1,6 @@
 {
   "name": "codexlink-macos",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "CodexLink macOS launcher, account, payment and local conversation utility",
   "main": "src/main.js",
   "author": "CodexLink",

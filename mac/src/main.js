@@ -11,7 +11,7 @@ const { TokenVaultService, importManagedTokens } = require('./services/token-vau
 const { atomicWrite, ensureDir, publicMessage } = require('./services/util');
 
 const APP_NAME = 'CodexLink';
-const APP_VERSION = '1.0.22';
+const APP_VERSION = '1.0.23';
 const RELEASE_API = 'https://api.github.com/repos/Baorongxs/CodexLink/releases/latest';
 const DOWNLOAD_URL = 'https://chatgpt.com/download/';
 
@@ -205,13 +205,6 @@ async function handleAction(payload, resourceRoot = path.join(__dirname, '..', '
     case 'open-backup-folder':
       ensureDir(conversations.backupRoot);
       await shell.openPath(conversations.backupRoot);
-      break;
-    case 'open-usage-guide':
-      await dialog.showMessageBox(mainWindow, {
-        type: 'info', title: 'CodexLink macOS 使用说明',
-        message: fs.readFileSync(path.join(resourceRoot, 'usage-guide.txt'), 'utf8'),
-        buttons: ['知道了']
-      });
       break;
     case 'backup-conversations':
       await backupConversations();
