@@ -25,7 +25,7 @@ assert.equal(config.app.windows[0].hiddenTitle, true);
 assert.match(html, /下载 Apple 芯片版/);
 assert.match(html, /下载 Intel 芯片版/);
 assert.match(html, /下载到“下载”文件夹/);
-assert.doesNotMatch(html, /微软商店|winget|install-online|install-offline/i);
+assert.doesNotMatch(html, /winget|install-online|install-offline/i);
 assert.match(rust, /persistent\.oaistatic\.com\/codex-app-prod\/Codex\.dmg/);
 assert.match(rust, /persistent\.oaistatic\.com\/codex-app-prod\/Codex-latest-x64\.dmg/);
 assert.match(rust, /dirs::download_dir/);
@@ -47,6 +47,7 @@ const localOnly = new Set([
   "open-support",
   "open-logs",
   "open-install-codex",
+  "open-usage-guide",
 ]);
 const actions = new Set([
   ...[...html.matchAll(/send\(['"]([^'"]+)/g)]
@@ -65,14 +66,28 @@ for (const action of [...actions].filter((value) => !localOnly.has(value))) {
   );
 }
 
+for (const tutorialToken of [
+  "使用教程",
+  "usage-guide-backdrop",
+  "CodexLink 使用教程",
+  "CodexLink 是一款简易高效的 Codex 启动工具",
+  "详细使用步骤",
+  "功能补充说明",
+  "即可直接使用 Codex。",
+  "if (action === 'open-usage-guide') { openModal('usage-guide'); return; }",
+]) {
+  assert.ok(html.includes(tutorialToken), `Missing built-in tutorial token: ${tutorialToken}`);
+}
+assert.doesNotMatch(rust, /"open-usage-guide"|usage-guide\.txt|CodexLink macOS 使用说明/);
+
 for (const asset of [
   "frontend/app-logo.png",
   "frontend/support-qr.png",
-  "frontend/usage-guide.txt",
   "src-tauri/icons/icon.icns",
 ]) {
   assert.ok(fs.statSync(path.join(root, asset)).size > 0, `Missing asset: ${asset}`);
 }
+assert.equal(fs.existsSync(path.join(root, "frontend/usage-guide.txt")), false);
 
 assert.doesNotMatch(cargo, /electron|chromium|cef/i);
 assert.doesNotMatch(bridge, /api[_-]?key\s*[:=]\s*["'][^"']+/i);

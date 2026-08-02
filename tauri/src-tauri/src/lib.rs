@@ -33,7 +33,7 @@ use vault::{import_managed_tokens, VaultState};
 use uuid::Uuid;
 
 const APP_NAME: &str = "CodexLink";
-const APP_VERSION: &str = "1.0.22";
+const APP_VERSION: &str = "1.0.23";
 const RELEASE_API: &str = "https://api.github.com/repos/Baorongxs/CodexLink/releases/latest";
 const CODEX_DMG_APPLE_SILICON: &str =
     "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
@@ -289,15 +289,6 @@ async fn dispatch_action(
         "open-backup-folder" => {
             ensure_dir(&state.conversations.backup_root)?;
             open::that(&state.conversations.backup_root).map_err(|error| error.to_string())
-        }
-        "open-usage-guide" => {
-            MessageDialog::new()
-                .set_level(MessageLevel::Info)
-                .set_title("CodexLink macOS 使用说明")
-                .set_description(include_str!("../../frontend/usage-guide.txt"))
-                .set_buttons(MessageButtons::Ok)
-                .show();
-            Ok(())
         }
         "backup-conversations" => backup_conversations(app, state).await,
         "restore-conversations" => restore_conversations(app, state).await,

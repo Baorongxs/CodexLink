@@ -531,6 +531,33 @@
       stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
     }
     .footer-guide-btn { min-width: 72px; }
+    .guide-modal { width: min(540px, 100%); }
+    .guide-content { display: grid; gap: 18px; }
+    .guide-intro {
+      margin: 0; padding: 14px 16px; border: 1px solid #dbeafe; border-radius: 14px;
+      background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+      color: #334155; font-size: 13px; line-height: 1.8; user-select: text;
+    }
+    .guide-section { display: grid; gap: 11px; }
+    .guide-section-title { margin: 0; color: var(--text); font-size: 14px; font-weight: 800; }
+    .guide-steps { display: grid; gap: 10px; }
+    .guide-step {
+      display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px;
+      padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: #fff;
+    }
+    .guide-step-number {
+      width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px;
+      background: #e8f3ff; color: var(--blue); font-size: 13px; font-weight: 900;
+    }
+    .guide-step-copy { min-width: 0; display: grid; gap: 5px; user-select: text; }
+    .guide-step-copy strong { color: var(--text); font-size: 13px; }
+    .guide-step-copy p { margin: 0; color: #475569; font-size: 12px; line-height: 1.75; }
+    .guide-options { display: grid; gap: 4px; margin: 2px 0; color: #475569; font-size: 12px; line-height: 1.65; }
+    .guide-options span::before { content: "•"; margin-right: 7px; color: var(--blue); font-weight: 900; }
+    .guide-note {
+      padding: 13px 14px; border-radius: 13px; background: #f8fafc; border: 1px solid var(--line);
+      color: #475569; font-size: 12px; line-height: 1.75; user-select: text;
+    }
     .support-qr-wrap {
       display: grid; justify-items: center; gap: 10px; padding: 8px 0 4px;
     }
@@ -752,7 +779,7 @@
     <header class="titlebar" id="titlebar">
       <div class="brand">
         <div class="brand-mark"><img id="app-logo" alt=""></div>
-      <div class="brand-title">CodexLink · macOS <button type="button" class="app-version" id="app-version" data-action="check-update" title="检查更新">v1.0.22</button></div>
+      <div class="brand-title">CodexLink · macOS <button type="button" class="app-version" id="app-version" data-action="check-update" title="检查更新">v1.0.23</button></div>
       </div>
     </header>
 
@@ -914,7 +941,7 @@
         </button>
       </div>
       <div class="footer-actions">
-        <button class="footer-btn footer-guide-btn" data-action="open-usage-guide">使用说明</button>
+        <button class="footer-btn footer-guide-btn" data-action="open-usage-guide">使用教程</button>
       </div>
     </footer>
   </div>
@@ -1049,6 +1076,44 @@
       <div class="modal-foot">
         <button class="btn" data-close-modal="install-codex">取消</button>
       </div>
+    </section>
+  </div>
+
+  <!-- 使用教程二级弹窗 -->
+  <div class="backdrop" id="usage-guide-backdrop">
+    <section class="modal guide-modal" role="dialog" aria-modal="true" aria-labelledby="usage-guide-title">
+      <header class="modal-head">
+        <h3 id="usage-guide-title">CodexLink 使用教程</h3>
+        <button class="modal-close" data-close-modal="usage-guide" aria-label="关闭">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="guide-content">
+          <p class="guide-intro">CodexLink 是一款简易高效的 Codex 启动工具，可简化 Codex 安装、API 导入、程序启动等全套操作流程，同时内置多项功能优化，大幅降低使用门槛，提升用户使用体验。</p>
+          <section class="guide-section" aria-labelledby="guide-steps-title">
+            <h4 class="guide-section-title" id="guide-steps-title">详细使用步骤</h4>
+            <div class="guide-steps">
+              <article class="guide-step"><div class="guide-step-number">1</div><div class="guide-step-copy"><strong>账号登录</strong><p>完成账号注册并登录 CodexLink 客户端。</p></div></article>
+              <article class="guide-step">
+                <div class="guide-step-number">2</div>
+                <div class="guide-step-copy">
+                  <strong>安装 Codex 启动器</strong>
+                  <p>点击【安装Codex】，可二选一完成下载安装：</p>
+                  <div class="guide-options"><span>微软商店在线下载</span><span>离线安装包下载</span></div>
+                  <p>Mac 用户需根据自身电脑芯片型号，选择对应的适配版本下载安装。</p>
+                </div>
+              </article>
+              <article class="guide-step"><div class="guide-step-number">3</div><div class="guide-step-copy"><strong>自动导入 API</strong><p>点击【导入API】，工具将自动生成、配置并保存 API 令牌，无需手动操作。</p></div></article>
+              <article class="guide-step"><div class="guide-step-number">4</div><div class="guide-step-copy"><strong>选择 API 分组</strong><p>支持分组切换使用 API，其中 PLUS、PRO 两大分组各配备 4 条可用线路。若当前分组线路无法正常使用，直接切换其他分组即可恢复使用。如需切换为官方账号模式，勾选开启【官方开关】即可。</p></div></article>
+              <article class="guide-step"><div class="guide-step-number">5</div><div class="guide-step-copy"><strong>账户余额充值</strong><p>点击【充值】，确保账号内有可用余额，即可直接使用 Codex。</p></div></article>
+            </div>
+          </section>
+          <section class="guide-section" aria-labelledby="guide-note-title">
+            <h4 class="guide-section-title" id="guide-note-title">功能补充说明</h4>
+            <div class="guide-note">切换 API 分组后，工具会自动匹配对应分组的 API 令牌，并自动重启 Codex 程序，无需用户手动重启，全程自动化完成。</div>
+          </section>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="btn primary" data-close-modal="usage-guide">我知道了</button></div>
     </section>
   </div>
 
@@ -1763,6 +1828,7 @@
           if (action === 'open-register') { openModal('register'); return; }
           if (action === 'open-support') { openModal('support'); return; }
           if (action === 'open-logs') { openModal('logs'); return; }
+          if (action === 'open-usage-guide') { openModal('usage-guide'); return; }
           if (action === 'open-install-codex') { openModal('install-codex'); return; }
           if (action === 'clear-logs') {
             document.getElementById('log').innerHTML = '';
@@ -1828,6 +1894,7 @@
           closeModal('install-codex');
           closeModal('logs');
           closeModal('support');
+          closeModal('usage-guide');
           closeModal('update');
           closeModal('topup');
           closeRouteMenu();

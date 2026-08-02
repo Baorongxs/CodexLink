@@ -134,7 +134,7 @@ impl AccountState {
         let mut request = client
             .request(method, endpoint)
             .header(ACCEPT, HeaderValue::from_static("application/json"))
-            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.22 Tauri macOS"));
+            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.23 Tauri macOS"));
         if let Some(ref json_body) = body {
             request = request
                 .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))

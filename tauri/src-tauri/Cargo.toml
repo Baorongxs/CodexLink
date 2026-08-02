@@ -1,6 +1,6 @@
 [package]
 name = "codexlink"
-version = "1.0.22"
+version = "1.0.23"
 description = "CodexLink macOS launcher, account, payment and conversation utility"
 authors = ["CodexLink"]
 edition = "2021"
