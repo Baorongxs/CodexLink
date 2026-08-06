@@ -11,8 +11,9 @@ const { TokenVaultService, importManagedTokens } = require('./services/token-vau
 const { atomicWrite, ensureDir, publicMessage } = require('./services/util');
 
 const APP_NAME = 'CodexLink';
-const APP_VERSION = '1.0.23';
+const APP_VERSION = '1.0.25';
 const RELEASE_API = 'https://api.github.com/repos/Baorongxs/CodexLink/releases/latest';
+const OFFICIAL_DOWNLOAD_URL = 'https://studio.baorongxs.top';
 const DOWNLOAD_URL = 'https://chatgpt.com/download/';
 
 app.setName(APP_NAME);
@@ -191,7 +192,10 @@ async function handleAction(payload, resourceRoot = path.join(__dirname, '..', '
       await checkForUpdates(true);
       break;
     case 'download-update':
-      if (availableUpdate?.downloadUrl) openExternal(availableUpdate.downloadUrl);
+      if (availableUpdate) {
+        openExternal(getOfficialDownloadUrl());
+        postToast('已打开 CodexLink 官网下载页面');
+      }
       break;
     case 'open-codex-root':
       ensureDir(path.join(os.homedir(), '.codex'));
@@ -505,13 +509,7 @@ async function checkForUpdates(manual) {
       if (manual) postToast('当前已是最新版本');
       return;
     }
-    const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-    const asset = (release.assets || []).find((item) => /mac/i.test(item.name) && new RegExp(arch, 'i').test(item.name)) ||
-      (release.assets || []).find((item) => /mac/i.test(item.name));
-    availableUpdate = {
-      downloadUrl: asset?.browser_download_url || release.html_url,
-      releaseUrl: release.html_url
-    };
+    availableUpdate = { version: latestVersion };
     post({
       type: 'update-available', latestVersion, currentVersion: APP_VERSION,
       notes: release.body || '新版已经发布，建议下载更新。'
@@ -519,6 +517,14 @@ async function checkForUpdates(manual) {
   } catch (error) {
     if (manual) postToast(`检查更新失败：${publicMessage(error.message)}`, true);
   }
+}
+
+function getOfficialDownloadUrl() {
+  const url = new URL(OFFICIAL_DOWNLOAD_URL);
+  if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'studio.baorongxs.top') {
+    throw new Error('官网下载地址无效。');
+  }
+  return url.toString().replace(/\/$/, '');
 }
 
 function loadSettings() {

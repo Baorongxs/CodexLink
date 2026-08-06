@@ -8,7 +8,8 @@ class AccountService {
     this.quotaPerUnit = 500000;
     this.state = {
       loggedIn: false, baseUrl: '', username: '', displayName: '', userId: '',
-      cookieHeader: '', quota: 0, usedQuota: 0, balanceText: '$--',
+      cookieHeader: '', accessToken: '', accessExpiresAt: 0, authSessionId: '',
+      quota: 0, usedQuota: 0, balanceText: '$--',
       usedText: '$--', refreshedAt: ''
     };
     this.load();
@@ -46,7 +47,8 @@ class AccountService {
   clear() {
     this.state = {
       loggedIn: false, baseUrl: '', username: '', displayName: '', userId: '',
-      cookieHeader: '', quota: 0, usedQuota: 0, balanceText: '$--',
+      cookieHeader: '', accessToken: '', accessExpiresAt: 0, authSessionId: '',
+      quota: 0, usedQuota: 0, balanceText: '$--',
       usedText: '$--', refreshedAt: ''
     };
     try { fs.rmSync(this.sessionPath, { force: true }); } catch (_) {}
@@ -81,25 +83,41 @@ class AccountService {
   }
 
   async rawRequest(baseUrl, relativePath, { method = 'GET', body, authenticated = false } = {}) {
-    const headers = { Accept: 'application/json', 'User-Agent': 'CodexLink/1.0.23 macOS' };
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    baseUrl = normalizeBase(baseUrl);
     if (authenticated) {
       this.ensureLoggedIn();
-      if (this.state.cookieHeader) headers.Cookie = this.state.cookieHeader;
-      if (this.state.userId) headers['New-Api-User'] = String(this.state.userId);
+      await this.ensureFreshAccessToken(false);
     }
-    const response = await fetch(`${normalizeBase(baseUrl)}${relativePath}`, {
-      method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'follow'
-    });
-    this.captureCookies(response);
-    const text = await response.text();
-    let envelope;
-    try { envelope = text ? JSON.parse(text) : {}; } catch (_) { throw new Error(`服务返回了无效数据（HTTP ${response.status}）。`); }
-    if (!response.ok) throw new Error(envelope.message || `请求失败（HTTP ${response.status}）。`);
-    if (Object.prototype.hasOwnProperty.call(envelope, 'success') && !envelope.success) {
-      throw new Error(envelope.message || '服务请求失败。');
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (authenticated && attempt > 0) await this.ensureFreshAccessToken(true);
+      const headers = {
+        Accept: 'application/json',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'User-Agent': 'CodexLink/1.0.25 macOS'
+      };
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+      if (authenticated) {
+        if (this.state.cookieHeader) headers.Cookie = this.state.cookieHeader;
+        if (this.state.userId) headers['New-Api-User'] = String(this.state.userId);
+        if (this.state.accessToken) headers.Authorization = `Bearer ${this.state.accessToken}`;
+        if (this.state.authSessionId) headers['X-Auth-Session'] = this.state.authSessionId;
+      }
+      const response = await fetch(`${baseUrl}${relativePath}`, {
+        method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'follow'
+      });
+      this.captureCookies(response);
+      const text = await response.text();
+      let envelope;
+      try { envelope = text ? JSON.parse(text) : {}; } catch (_) { throw new Error(`服务返回了无效数据（HTTP ${response.status}）。`); }
+      if (response.status === 401 && authenticated && attempt === 0 && this.isModernAuthentication()) continue;
+      if (!response.ok) throw new Error(this.apiFailureMessage(envelope, response.status));
+      if (Object.prototype.hasOwnProperty.call(envelope, 'success') && !envelope.success) {
+        throw new Error(this.apiFailureMessage(envelope, response.status));
+      }
+      if (authenticated) this.save();
+      return envelope;
     }
-    return envelope;
+    throw new Error('登录会话已过期，请重新登录。');
   }
 
   async request(relativePath, { method = 'GET', body } = {}) {
@@ -115,12 +133,19 @@ class AccountService {
     });
     const data = envelope.data || {};
     if (data.require_2fa) throw new Error('该账号需要 2FA，请先在网页完成二次验证。');
-    const userId = data.id ?? data.user_id ?? data.userId;
-    if (userId === undefined || userId === null || userId === '') throw new Error('登录成功但未返回用户 ID。');
+    const user = data.user && typeof data.user === 'object' ? data.user : {};
+    const userId = data.id ?? data.user_id ?? data.userId ?? user.id ?? user.user_id ?? user.userId;
+    if (userId === undefined || userId === null || userId === '') {
+      throw new Error('登录响应缺少用户信息，请确认 New API 已完整更新后重试。');
+    }
+    const authSession = data.session && typeof data.session === 'object' ? data.session : {};
     Object.assign(this.state, {
       loggedIn: true, baseUrl, username: String(username).trim(),
-      displayName: data.display_name || data.displayName || username,
-      userId: String(userId)
+      displayName: user.display_name || user.displayName || data.display_name || data.displayName || username,
+      userId: String(userId),
+      accessToken: data.access_token || data.accessToken || '',
+      accessExpiresAt: Number(data.access_expires_at ?? data.accessExpiresAt ?? 0),
+      authSessionId: String(authSession.sid ?? authSession.id ?? '')
     });
     this.save();
     await this.refreshBalance();
@@ -166,6 +191,51 @@ class AccountService {
 
   ensureLoggedIn() {
     if (!this.state.loggedIn) throw new Error('请先登录。');
+  }
+
+  isModernAuthentication() {
+    return Boolean(this.state.accessToken);
+  }
+
+  async ensureFreshAccessToken(force) {
+    if (!this.isModernAuthentication()) return;
+    const now = Math.floor(Date.now() / 1000);
+    if (!force && (!(Number(this.state.accessExpiresAt) > 0) || Number(this.state.accessExpiresAt) > now + 60)) return;
+    const headers = {
+      Accept: 'application/json',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+      'Content-Type': 'application/json',
+      'User-Agent': 'CodexLink/1.0.25 macOS'
+    };
+    if (this.state.cookieHeader) headers.Cookie = this.state.cookieHeader;
+    if (this.state.authSessionId) headers['X-Auth-Session'] = this.state.authSessionId;
+    const response = await fetch(`${normalizeBase(this.state.baseUrl)}/api/user/auth/refresh`, {
+      method: 'POST', headers, body: '{}', redirect: 'follow'
+    });
+    this.captureCookies(response);
+    const text = await response.text();
+    let envelope;
+    try { envelope = text ? JSON.parse(text) : {}; } catch (_) { throw new Error('刷新登录会话失败，请重新登录。'); }
+    if (!response.ok || !envelope.success) throw new Error(this.apiFailureMessage(envelope, response.status));
+    const data = envelope.data || {};
+    const user = data.user && typeof data.user === 'object' ? data.user : {};
+    const authSession = data.session && typeof data.session === 'object' ? data.session : {};
+    const token = data.access_token || data.accessToken || '';
+    if (!token) throw new Error('刷新登录会话失败，请重新登录。');
+    Object.assign(this.state, {
+      accessToken: token,
+      accessExpiresAt: Number(data.access_expires_at ?? data.accessExpiresAt ?? 0),
+      authSessionId: String(authSession.sid ?? authSession.id ?? this.state.authSessionId ?? ''),
+      userId: String(user.id ?? user.user_id ?? user.userId ?? this.state.userId ?? '')
+    });
+    this.save();
+  }
+
+  apiFailureMessage(envelope, status) {
+    if (status === 401) return '登录会话已过期，请重新登录。';
+    if (status === 429) return '操作过于频繁，请稍后再试。';
+    if (status >= 500 && !envelope?.message) return '服务器暂时异常，请稍后重试。';
+    return envelope?.message || envelope?.error || `请求失败（HTTP ${status}）。`;
   }
 
   async getTopupInfo() {

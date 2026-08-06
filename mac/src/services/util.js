@@ -44,11 +44,27 @@ function normalizeBase(value) {
 }
 
 function publicMessage(value) {
-  return String(value || '操作失败。')
+  const sanitized = String(value || '操作失败。')
     .replace(/sk-[A-Za-z0-9._-]{8,}/g, '[已隐藏令牌]')
     .replace(/(?:\/Users\/|[A-Za-z]:\\Users\\)[^\s"'<>]+/g, '[已隐藏路径]')
     .replace(/https?:\/\/[^\s"'<>]+/g, '[已隐藏地址]')
     .slice(0, 280);
+  const rules = [
+    [/username.*password|password.*incorrect|invalid credentials|login failed/i, '用户名或密码错误。'],
+    [/invalid params|invalid parameters|bad request/i, '请求参数无效，请检查填写内容。'],
+    [/password login.*disabled|password authentication.*disabled/i, '当前服务已关闭密码登录。'],
+    [/too many requests|rate limit|request.*frequent/i, '操作过于频繁，请稍后再试。'],
+    [/unauthorized|not logged in|auth.*expired|token.*expired|session.*expired|session.*revoked/i, '登录会话已过期，请重新登录。'],
+    [/user.*banned|user.*disabled|account.*disabled/i, '账号已被禁用，请联系管理员。'],
+    [/timed out|timeout|operation was canceled|task was canceled/i, '请求超时，请检查网络后重试。'],
+    [/sending the request|connection.*refused|name.*resolved|network.*unreachable|ssl|certificate|fetch failed/i, '无法连接服务器，请检查网络和服务地址。'],
+    [/internal server error|database error|service unavailable|bad gateway|gateway timeout/i, '服务器暂时异常，请稍后重试。'],
+    [/not found/i, '请求的接口不存在，请检查服务版本。']
+  ];
+  for (const [matcher, message] of rules) if (matcher.test(sanitized)) return message;
+  return !/[\u3400-\u9fff]/.test(sanitized) && /[A-Za-z]{3,}/.test(sanitized)
+    ? '操作失败，请稍后重试。'
+    : sanitized;
 }
 
 function escapeToml(value) {
