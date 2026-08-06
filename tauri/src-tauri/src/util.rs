@@ -76,7 +76,29 @@ pub fn public_message(value: impl ToString) -> String {
         text = text.chars().take(280).collect();
     }
     if text.is_empty() {
-        "操作失败。".to_string()
+        return "操作失败，请稍后重试。".to_string();
+    }
+    let rules = [
+        (r"(?i)username.*password|password.*incorrect|invalid credentials|login failed", "用户名或密码错误。"),
+        (r"(?i)invalid params|invalid parameters|bad request", "请求参数无效，请检查填写内容。"),
+        (r"(?i)password login.*disabled|password authentication.*disabled", "当前服务已关闭密码登录。"),
+        (r"(?i)too many requests|rate limit|request.*frequent", "操作过于频繁，请稍后再试。"),
+        (r"(?i)unauthorized|not logged in|auth.*expired|token.*expired|session.*expired|session.*revoked", "登录会话已过期，请重新登录。"),
+        (r"(?i)user.*banned|user.*disabled|account.*disabled", "账号已被禁用，请联系管理员。"),
+        (r"(?i)timed out|timeout|operation was canceled|task was canceled", "请求超时，请检查网络后重试。"),
+        (r"(?i)sending the request|connection.*refused|name.*resolved|network.*unreachable|ssl|certificate|fetch failed", "无法连接服务器，请检查网络和服务地址。"),
+        (r"(?i)internal server error|database error|service unavailable|bad gateway|gateway timeout", "服务器暂时异常，请稍后重试。"),
+        (r"(?i)not found", "请求的接口不存在，请检查服务版本。"),
+    ];
+    for (pattern, message) in rules {
+        if Regex::new(pattern).expect("message regex").is_match(&text) {
+            return message.to_string();
+        }
+    }
+    let has_chinese = Regex::new(r"[\u{3400}-\u{9fff}]").expect("Chinese regex").is_match(&text);
+    let has_english = Regex::new(r"[A-Za-z]{3,}").expect("English regex").is_match(&text);
+    if !has_chinese && has_english {
+        "操作失败，请稍后重试。".to_string()
     } else {
         text
     }

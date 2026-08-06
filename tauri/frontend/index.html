@@ -779,7 +779,7 @@
     <header class="titlebar" id="titlebar">
       <div class="brand">
         <div class="brand-mark"><img id="app-logo" alt=""></div>
-      <div class="brand-title">CodexLink · macOS <button type="button" class="app-version" id="app-version" data-action="check-update" title="检查更新">v1.0.23</button></div>
+      <div class="brand-title">CodexLink · macOS <button type="button" class="app-version" id="app-version" data-action="check-update" title="检查更新">v1.0.25</button></div>
       </div>
     </header>
 
@@ -1145,14 +1145,14 @@
       </header>
       <div class="modal-body">
         <div class="update-summary">
-          <div class="update-version" id="update-version">发现 CodexLink 新版本，是否下载？</div>
+          <div class="update-version" id="update-version">发现 CodexLink 新版本，是否前往官网下载？</div>
           <div class="update-notes" id="update-notes">新版已经发布。</div>
-          <div class="update-source">更新信息来自 CodexLink 官方 GitHub Releases</div>
+          <div class="update-source">版本信息来自官方发布源，点击后前往 CodexLink 官网下载</div>
         </div>
       </div>
       <div class="modal-foot">
         <button class="btn" data-close-modal="update">稍后</button>
-        <button class="btn primary" data-action="download-update">下载更新</button>
+        <button class="btn primary" data-action="download-update">前往官网下载</button>
       </div>
     </section>
   </div>
@@ -2018,7 +2018,7 @@
             const current = String(data.currentVersion || '').replace(/^v/i, '');
             const versionBox = document.getElementById('update-version');
             const notesBox = document.getElementById('update-notes');
-            if (versionBox) versionBox.textContent = '发现 CodexLink v' + latest + '（当前 v' + current + '），是否下载？';
+            if (versionBox) versionBox.textContent = '发现 CodexLink v' + latest + '（当前 v' + current + '），是否前往官网下载？';
             if (notesBox) notesBox.textContent = String(data.notes || '新版已经发布，建议下载更新。').trim();
             openModal('update');
           } else if (data.type === 'register-ok') {

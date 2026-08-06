@@ -79,6 +79,23 @@ for (const tutorialToken of [
   assert.ok(html.includes(tutorialToken), `Missing built-in tutorial token: ${tutorialToken}`);
 }
 assert.doesNotMatch(rust, /"open-usage-guide"|usage-guide\.txt|CodexLink macOS 使用说明/);
+assert.match(rust, /OFFICIAL_DOWNLOAD_URL: &str = "https:\/\/studio\.baorongxs\.top"/);
+assert.match(rust, /official_download_url\(\)/);
+assert.doesNotMatch(rust, /browser_download_url/);
+assert.match(html, /前往官网下载/);
+
+const account = read("src-tauri/src/account.rs");
+for (const token of [
+  'data.get("user")',
+  'access_token',
+  'Authorization',
+  'Bearer',
+  '/api/user/auth/refresh',
+  'X-Auth-Session',
+  'Accept-Language',
+]) {
+  assert.ok(account.includes(token), `Missing New API auth compatibility token: ${token}`);
+}
 
 for (const asset of [
   "frontend/app-logo.png",

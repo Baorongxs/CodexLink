@@ -33,8 +33,9 @@ use vault::{import_managed_tokens, VaultState};
 use uuid::Uuid;
 
 const APP_NAME: &str = "CodexLink";
-const APP_VERSION: &str = "1.0.23";
+const APP_VERSION: &str = "1.0.25";
 const RELEASE_API: &str = "https://api.github.com/repos/Baorongxs/CodexLink/releases/latest";
+const OFFICIAL_DOWNLOAD_URL: &str = "https://studio.baorongxs.top";
 const CODEX_DMG_APPLE_SILICON: &str =
     "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
 const CODEX_DMG_INTEL: &str =
@@ -79,7 +80,7 @@ impl Settings {
 }
 
 struct AvailableUpdate {
-    download_url: String,
+    version: String,
 }
 
 pub struct AppState {
@@ -267,8 +268,9 @@ async fn dispatch_action(
         }
         "check-update" => check_for_updates(app, state, true).await,
         "download-update" => {
-            if let Some(update) = state.available_update.lock().await.as_ref() {
-                open_external(&update.download_url)?;
+            if state.available_update.lock().await.is_some() {
+                open_external(official_download_url()?)?;
+                post_toast(app, "已打开 CodexLink 官网下载页面", false);
             }
             Ok(())
         }
@@ -961,38 +963,7 @@ async fn check_for_updates(
             }
             return Ok(());
         }
-        let arch = if std::env::consts::ARCH == "aarch64" {
-            "arm64"
-        } else {
-            "x64"
-        };
-        let assets = release
-            .get("assets")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let asset = assets
-            .iter()
-            .find(|item| {
-                let name = item.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase();
-                name.contains("mac") && name.contains(arch)
-            })
-            .or_else(|| {
-                assets.iter().find(|item| {
-                    item.get("name")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_lowercase()
-                        .contains("mac")
-                })
-            });
-        let download_url = asset
-            .and_then(|item| item.get("browser_download_url"))
-            .and_then(Value::as_str)
-            .or_else(|| release.get("html_url").and_then(Value::as_str))
-            .unwrap_or("")
-            .to_string();
-        *state.available_update.lock().await = Some(AvailableUpdate { download_url });
+        *state.available_update.lock().await = Some(AvailableUpdate { version: latest.clone() });
         post(
             app,
             json!({
@@ -1046,6 +1017,14 @@ fn open_external(value: &str) -> Result<(), String> {
         return Err("只能打开 HTTP 或 HTTPS 地址。".to_string());
     }
     open::that(url.as_str()).map_err(|error| error.to_string())
+}
+
+fn official_download_url() -> Result<&'static str, String> {
+    let url = Url::parse(OFFICIAL_DOWNLOAD_URL).map_err(|_| "官网下载地址无效。".to_string())?;
+    if url.scheme() != "https" || url.host_str() != Some("studio.baorongxs.top") {
+        return Err("官网下载地址无效。".to_string());
+    }
+    Ok(OFFICIAL_DOWNLOAD_URL)
 }
 
 fn string_field(payload: &Value, key: &str, fallback: &str) -> String {
