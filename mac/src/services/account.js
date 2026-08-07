@@ -1,6 +1,19 @@
 const fs = require('node:fs');
 const { atomicWrite, normalizeBase } = require('./util');
 
+async function fetchWithTimeout(url, options, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('请求超时，请检查网络后重试。');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 class AccountService {
   constructor({ sessionPath, safeStorage }) {
     this.sessionPath = sessionPath;
@@ -97,12 +110,16 @@ class AccountService {
       };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (authenticated) {
+        if (method === 'GET') {
+          headers['Cache-Control'] = 'no-cache, no-store';
+          headers.Pragma = 'no-cache';
+        }
         if (this.state.cookieHeader) headers.Cookie = this.state.cookieHeader;
         if (this.state.userId) headers['New-Api-User'] = String(this.state.userId);
         if (this.state.accessToken) headers.Authorization = `Bearer ${this.state.accessToken}`;
         if (this.state.authSessionId) headers['X-Auth-Session'] = this.state.authSessionId;
       }
-      const response = await fetch(`${baseUrl}${relativePath}`, {
+      const response = await fetchWithTimeout(`${baseUrl}${relativePath}`, {
         method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'follow'
       });
       this.captureCookies(response);
@@ -148,7 +165,6 @@ class AccountService {
       authSessionId: String(authSession.sid ?? authSession.id ?? '')
     });
     this.save();
-    await this.refreshBalance();
   }
 
   async register(baseUrl, username, password, email, verificationCode, affCode) {
@@ -167,7 +183,7 @@ class AccountService {
   }
 
   async refreshBalance() {
-    const self = await this.request('/api/user/self');
+    const self = await this.request(`/api/user/self?codexlink_ts=${Date.now()}`);
     Object.assign(this.state, {
       quota: Number(self.quota || 0),
       usedQuota: Number(self.used_quota ?? self.usedQuota ?? 0),
@@ -205,11 +221,15 @@ class AccountService {
       Accept: 'application/json',
       'Accept-Language': 'zh-CN,zh;q=0.9',
       'Content-Type': 'application/json',
-      'User-Agent': 'CodexLink/1.0.25 macOS'
+      'User-Agent': 'CodexLink/1.0.25 macOS',
+      Origin: new URL(normalizeBase(this.state.baseUrl)).origin,
+      Referer: `${normalizeBase(this.state.baseUrl)}/`,
+      'Cache-Control': 'no-cache, no-store',
+      Pragma: 'no-cache'
     };
     if (this.state.cookieHeader) headers.Cookie = this.state.cookieHeader;
     if (this.state.authSessionId) headers['X-Auth-Session'] = this.state.authSessionId;
-    const response = await fetch(`${normalizeBase(this.state.baseUrl)}/api/user/auth/refresh`, {
+    const response = await fetchWithTimeout(`${normalizeBase(this.state.baseUrl)}/api/user/auth/refresh`, {
       method: 'POST', headers, body: '{}', redirect: 'follow'
     });
     this.captureCookies(response);

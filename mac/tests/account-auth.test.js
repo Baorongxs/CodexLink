@@ -58,16 +58,21 @@ test('新版 New API 嵌套登录、Bearer 与刷新流程可用', async () => {
         }
       });
     }
-    if (request.url === '/api/user/self') {
+    if (request.url.startsWith('/api/user/self?codexlink_ts=')) {
       assert.equal(request.headers.authorization, 'Bearer fresh-access');
       assert.equal(request.headers['new-api-user'], '9527');
       assert.equal(request.headers['accept-language'], 'zh-CN,zh;q=0.9');
+      assert.equal(request.headers['cache-control'], 'no-cache, no-store');
+      assert.equal(request.headers.pragma, 'no-cache');
       return json(response, { success: true, data: { id: 9527, username: 'new-user', display_name: '新版用户', quota: 500000 } });
     }
     response.writeHead(404).end();
   }, async (baseUrl) => {
     const account = new AccountService({ sessionPath: path.join(temp, 'session.dat'), safeStorage });
     await account.login(baseUrl, 'new-user', 'password123');
+    assert.equal(account.state.loggedIn, true);
+    assert.equal(refreshCount, 0);
+    await account.refreshBalance();
     assert.equal(account.state.userId, '9527');
     assert.equal(account.state.displayName, '新版用户');
     assert.equal(account.state.accessToken, 'fresh-access');
@@ -83,7 +88,7 @@ test('旧版扁平登录响应保持兼容', async () => {
     if (request.url === '/api/user/login') {
       return json(response, { success: true, data: { id: 7, username: 'legacy' } }, { 'Set-Cookie': 'session=legacy-cookie; Path=/' });
     }
-    if (request.url === '/api/user/self') {
+    if (request.url.startsWith('/api/user/self?codexlink_ts=')) {
       assert.equal(request.headers['new-api-user'], '7');
       assert.match(request.headers.cookie || '', /session=legacy-cookie/);
       assert.equal(request.headers.authorization, undefined);
@@ -93,6 +98,8 @@ test('旧版扁平登录响应保持兼容', async () => {
   }, async (baseUrl) => {
     const account = new AccountService({ sessionPath: path.join(temp, 'session.dat'), safeStorage });
     await account.login(baseUrl, 'legacy', 'password123');
+    assert.equal(account.state.loggedIn, true);
+    await account.refreshBalance();
     assert.equal(account.state.userId, '7');
     assert.equal(account.state.accessToken, '');
   });

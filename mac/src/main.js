@@ -29,6 +29,8 @@ let settings = null;
 let settingsPath = '';
 let availableUpdate = null;
 let historyBusy = false;
+let balanceRefreshTimer = null;
+let balanceRefreshBusy = false;
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
@@ -280,7 +282,24 @@ function onUiReady(resourceRoot) {
   refreshRoutes(true);
   postLog('CodexLink macOS 启动器就绪。', 'ok');
   if (account.state.loggedIn) account.refreshBalance().then(() => post(account.balancePayload())).catch(() => {});
+  startBalanceRefreshTimer();
   checkForUpdates(false).catch(() => {});
+}
+
+function startBalanceRefreshTimer() {
+  if (balanceRefreshTimer) return;
+  balanceRefreshTimer = setInterval(async () => {
+    if (!account?.state.loggedIn || balanceRefreshBusy) return;
+    balanceRefreshBusy = true;
+    try {
+      await account.refreshBalance();
+      post(account.balancePayload());
+    } catch (error) {
+      postLog(`自动刷新余额失败：${publicMessage(error.message)}`, 'error');
+    } finally {
+      balanceRefreshBusy = false;
+    }
+  }, 30000);
 }
 
 async function login(payload) {
@@ -294,6 +313,7 @@ async function login(payload) {
   post(account.balancePayload());
   postToast('登录成功');
   postLog('登录成功。', 'ok');
+  refreshBalanceAfterAuth('登录成功，但余额刷新失败');
 }
 
 async function register(payload) {
@@ -309,6 +329,16 @@ async function register(payload) {
   post(account.balancePayload());
   postToast('注册成功，已自动登录');
   postLog('注册成功并已登录。', 'ok');
+  refreshBalanceAfterAuth('注册登录成功，但余额刷新失败');
+}
+
+function refreshBalanceAfterAuth(failurePrefix) {
+  account.refreshBalance().then(() => {
+    post(account.balancePayload());
+    postLog(`余额已刷新：${account.state.balanceText}`, 'ok');
+  }).catch((error) => {
+    postLog(`${failurePrefix}：${publicMessage(error.message)}`, 'error');
+  });
 }
 
 async function loadTopup() {
