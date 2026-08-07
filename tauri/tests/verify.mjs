@@ -93,6 +93,10 @@ for (const token of [
   '/api/user/auth/refresh',
   'X-Auth-Session',
   'Accept-Language',
+  'codexlink_ts',
+  'no-cache, no-store',
+  'Origin',
+  'Referer',
 ]) {
   assert.ok(account.includes(token), `Missing New API auth compatibility token: ${token}`);
 }

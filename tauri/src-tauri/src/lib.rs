@@ -422,6 +422,8 @@ async fn login(app: &AppHandle, state: &AppState, payload: &Value) -> Result<(),
     post(app, account.balance_payload());
     post_toast(app, "登录成功", false);
     post_log(app, "登录成功。", "ok");
+    drop(account);
+    refresh_balance_in_background(app.clone(), "登录成功，但余额刷新失败");
     Ok(())
 }
 
@@ -456,7 +458,26 @@ async fn register(app: &AppHandle, state: &AppState, payload: &Value) -> Result<
     post(app, state.account.lock().await.balance_payload());
     post_toast(app, "注册成功，已自动登录", false);
     post_log(app, "注册成功并已登录。", "ok");
+    refresh_balance_in_background(app.clone(), "注册登录成功，但余额刷新失败");
     Ok(())
+}
+
+fn refresh_balance_in_background(app: AppHandle, failure_prefix: &'static str) {
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        let mut account = state.account.lock().await;
+        match account.refresh_balance(&state.http).await {
+            Ok(()) => {
+                post(&app, account.balance_payload());
+                post_log(&app, &format!("余额已刷新：{}", account.balance_text), "ok");
+            }
+            Err(error) => post_log(
+                &app,
+                &format!("{failure_prefix}：{}", public_message(error)),
+                "error",
+            ),
+        }
+    });
 }
 
 async fn import_api(app: &AppHandle, state: &AppState, replace_all: bool) -> Result<(), String> {
@@ -1146,6 +1167,28 @@ pub fn run() {
                 cdp: Mutex::new(None),
                 history_busy: AtomicBool::new(false),
                 available_update: Mutex::new(None),
+            });
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                interval.tick().await;
+                loop {
+                    interval.tick().await;
+                    let state = app_handle.state::<AppState>();
+                    let mut account = state.account.lock().await;
+                    if !account.logged_in {
+                        continue;
+                    }
+                    match account.refresh_balance(&state.http).await {
+                        Ok(()) => post(&app_handle, account.balance_payload()),
+                        Err(error) => post_log(
+                            &app_handle,
+                            &format!("自动刷新余额失败：{}", public_message(error)),
+                            "error",
+                        ),
+                    }
+                }
             });
             setup_tray(app)?;
             Ok(())

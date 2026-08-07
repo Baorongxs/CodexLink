@@ -148,6 +148,11 @@ impl AccountState {
                 .header(ACCEPT, HeaderValue::from_static("application/json"))
                 .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
                 .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.25 Tauri macOS"));
+            if authenticated && method == Method::GET {
+                request = request
+                    .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
+                    .header("Pragma", HeaderValue::from_static("no-cache"));
+            }
             if let Some(ref json_body) = body {
                 request = request
                     .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
@@ -270,7 +275,7 @@ impl AccountState {
             auth_session.get("sid").or_else(|| auth_session.get("id")),
         );
         self.save()?;
-        self.refresh_balance(client).await
+        Ok(())
     }
 
     fn is_modern_authentication(&self) -> bool {
@@ -285,13 +290,18 @@ impl AccountState {
         if !force && (self.access_expires_at <= 0 || self.access_expires_at > now + 60) {
             return Ok(());
         }
-        let endpoint = format!("{}/api/user/auth/refresh", normalize_base(&self.base_url)?);
+        let base_url = normalize_base(&self.base_url)?;
+        let endpoint = format!("{base_url}/api/user/auth/refresh");
         let mut request = client
             .post(endpoint)
             .header(ACCEPT, HeaderValue::from_static("application/json"))
             .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.25 Tauri macOS"))
+            .header("Origin", base_url.clone())
+            .header("Referer", format!("{base_url}/"))
+            .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
+            .header("Pragma", HeaderValue::from_static("no-cache"))
             .json(&json!({}));
         if !self.cookie_header.is_empty() {
             request = request.header(COOKIE, self.cookie_header.clone());
@@ -417,7 +427,8 @@ impl AccountState {
     }
 
     pub async fn refresh_balance(&mut self, client: &Client) -> Result<(), String> {
-        let data = self.request(client, "/api/user/self", Method::GET, None).await?;
+        let path = format!("/api/user/self?codexlink_ts={}", chrono::Utc::now().timestamp_millis());
+        let data = self.request(client, &path, Method::GET, None).await?;
         self.quota = value_f64(data.get("quota"));
         self.used_quota = value_f64(data.get("used_quota").or_else(|| data.get("usedQuota")));
         if let Some(value) = data.get("username").and_then(Value::as_str) {
