@@ -47,11 +47,21 @@ class CodexService {
     this.debugPort = normalizePort(debugPort);
     if (restart) await this.stop();
     this.status('正在启动 Codex…');
-    spawn('/usr/bin/open', [
-      '-na', appPath, '--args',
-      `--remote-debugging-port=${this.debugPort}`,
-      '--remote-debugging-address=127.0.0.1'
-    ], { detached: true, stdio: 'ignore' }).unref();
+    const executable = path.join(appPath, 'Contents', 'MacOS', path.basename(appPath, '.app'));
+    const launchFile = fs.existsSync(executable) ? executable : '/usr/bin/open';
+    const launchArgs = launchFile === executable
+      ? [
+          `--remote-debugging-port=${this.debugPort}`,
+          '--remote-debugging-address=127.0.0.1',
+          '--remote-allow-origins=*'
+        ]
+      : [
+          '-na', appPath, '--args',
+          `--remote-debugging-port=${this.debugPort}`,
+          '--remote-debugging-address=127.0.0.1',
+          '--remote-allow-origins=*'
+        ];
+    spawn(launchFile, launchArgs, { detached: true, stdio: 'ignore' }).unref();
     this.log('已启动 macOS Codex，正在连接页面增强功能。', 'info');
     await this.startInjection();
   }
@@ -182,15 +192,49 @@ class CodexService {
 }
 
 async function findPageSocket(port) {
-  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-  if (!response.ok) throw new Error(`调试端口 HTTP ${response.status}`);
-  const targets = await response.json();
-  const candidates = targets.filter((target) =>
-    target.type === 'page' && target.webSocketDebuggerUrl && !String(target.url || '').startsWith('devtools://')
-  );
-  const preferred = candidates.find((target) => /codex|chatgpt|index\.html/i.test(`${target.title} ${target.url}`)) || candidates[0];
-  if (!preferred) throw new Error('未找到 Codex 页面');
-  return preferred.webSocketDebuggerUrl;
+  let lastError = null;
+  for (const endpoint of ['/json/list', '/json']) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}${endpoint}`);
+      if (!response.ok) throw new Error(`调试端口 HTTP ${response.status}`);
+      const payload = await response.json();
+      const targets = Array.isArray(payload) ? payload : [];
+      const preferred = selectPageTarget(targets);
+      if (preferred) return preferred.webSocketDebuggerUrl;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(lastError?.message || '未找到 Codex 页面');
+}
+
+function selectPageTarget(targets) {
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const target of targets) {
+    if (!target || !target.webSocketDebuggerUrl || !/^wss?:\/\//i.test(String(target.webSocketDebuggerUrl))) continue;
+    const type = String(target.type || '').toLowerCase();
+    const url = String(target.url || '');
+    const title = String(target.title || '');
+    if (url.startsWith('devtools://')) continue;
+    if (type && !['page', 'webview', 'other'].includes(type)) continue;
+
+    const text = `${title} ${url}`;
+    if (type === 'other' && !/codex|chatgpt|index\.html|^(app:|file:)/i.test(text)) continue;
+    const avatar = /avatar-overlay/i.test(text);
+    const blank = !url || /^about:blank$/i.test(url) || /:\/\/$/.test(url);
+    let score = 50;
+    if (avatar) score -= 500;
+    if (blank) score -= 200;
+    if (/codex/i.test(title)) score += 120;
+    if (/codex/i.test(url)) score += 80;
+    if (/chatgpt/i.test(text)) score += 40;
+    if (/index\.html/i.test(url) && !avatar) score += 180;
+    if (/^(app:|file:)/i.test(url)) score += 60;
+    else if (/^https?:/i.test(url)) score += 10;
+    if (score > bestScore) { bestScore = score; best = target; }
+  }
+  return bestScore >= 50 ? best : null;
 }
 
 function normalizePort(value) {
@@ -202,4 +246,4 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-module.exports = { CodexService, findPageSocket, normalizePort };
+module.exports = { CodexService, findPageSocket, normalizePort, selectPageTarget };
