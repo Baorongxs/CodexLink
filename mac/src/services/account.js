@@ -114,6 +114,9 @@ class AccountService {
           headers['Cache-Control'] = 'no-cache, no-store';
           headers.Pragma = 'no-cache';
         }
+        const origin = new URL(baseUrl).origin;
+        headers.Origin = origin;
+        headers.Referer = `${origin}/`;
         if (this.state.cookieHeader) headers.Cookie = this.state.cookieHeader;
         if (this.state.userId) headers['New-Api-User'] = String(this.state.userId);
         if (this.state.accessToken) headers.Authorization = `Bearer ${this.state.accessToken}`;
@@ -283,12 +286,20 @@ class AccountService {
   async listAllTokens() {
     const all = [];
     for (let page = 1; page < 100; page += 1) {
-      const data = await this.request(`/api/token/?p=${page}&size=100`);
-      const items = Array.isArray(data.items) ? data.items : [];
+      const data = await this.request(`/api/token/?p=${page}&page_size=100`);
+      const items = Array.isArray(data) ? data
+        : Array.isArray(data.items) ? data.items
+          : Array.isArray(data.data) ? data.data
+            : Array.isArray(data.value) ? data.value : [];
       all.push(...items);
-      if (items.length < 100 || (data.total > 0 && page * 100 >= data.total)) break;
+      const total = Number(data?.total || 0);
+      if (items.length < 100 || (total > 0 && page * 100 >= total)) break;
     }
     return all;
+  }
+
+  async getTokenKey(id) {
+    return this.request(`/api/token/${encodeURIComponent(id)}/key`, { method: 'POST', body: {} });
   }
 
   async resolveUsage(request = {}) {

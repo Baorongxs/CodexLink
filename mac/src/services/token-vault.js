@@ -268,7 +268,6 @@ async function importManagedTokens(account, vault, replaceAll = false, log = () 
     } else {
       await account.request('/api/token/', { method: 'POST', body });
       operations.push(`${name}:created`);
-      existing = await account.listAllTokens();
     }
   }
   existing = await account.listAllTokens();
@@ -277,10 +276,21 @@ async function importManagedTokens(account, vault, replaceAll = false, log = () 
     if (!item) throw new Error(`创建后未找到令牌：${name}`);
     return { id: Number(item.id), name, group };
   });
-  const keyData = await account.request('/api/token/batch/keys', {
-    method: 'POST', body: { ids: finalTokens.map((item) => item.id) }
-  });
-  const keys = keyData.keys || keyData.value || keyData;
+  let keys;
+  try {
+    const keyData = await account.request('/api/token/batch/keys', {
+      method: 'POST', body: { ids: finalTokens.map((item) => item.id) }
+    });
+    keys = keyData.keys || keyData.value || keyData;
+  } catch (error) {
+    log(`批量获取密钥失败，改用逐个获取：${error.message}`, 'info');
+    keys = {};
+    for (const token of finalTokens) {
+      const data = await account.getTokenKey(token.id);
+      const key = data?.key || data?.token || '';
+      if (key) keys[String(token.id)] = key;
+    }
+  }
   for (const token of finalTokens) {
     token.key = pickKey(keys, token);
     if (!token.key || token.key === 'sk' || token.key === 'sk-') throw new Error('没有拿到完整的 9 个 API 密钥，未保存令牌。');

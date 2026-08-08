@@ -111,3 +111,19 @@ test('常见英文登录与网络错误会转为中文', () => {
   assert.equal(publicMessage('Too Many Requests'), '操作过于频繁，请稍后再试。');
   assert.equal(publicMessage('fetch failed'), '无法连接服务器，请检查网络和服务地址。');
 });
+
+test('新版令牌列表分页参数和裸数组响应保持兼容', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codexlink-token-list-'));
+  await withServer((request, response) => {
+    assert.equal(request.url, '/api/token/?p=1&page_size=100');
+    assert.equal(request.headers.origin, 'http://127.0.0.1:' + request.headers.host.split(':')[1]);
+    assert.match(request.headers.referer || '', /^http:\/\/127\.0\.0\.1:/);
+    return json(response, { success: true, data: [{ id: 1, name: 'GPT-PLUS-1' }] });
+  }, async (baseUrl) => {
+    const account = new AccountService({ sessionPath: path.join(temp, 'session.dat'), safeStorage });
+    Object.assign(account.state, { loggedIn: true, baseUrl, userId: '1', accessToken: '' });
+    const tokens = await account.listAllTokens();
+    assert.deepEqual(tokens, [{ id: 1, name: 'GPT-PLUS-1' }]);
+  });
+  fs.rmSync(temp, { recursive: true, force: true });
+});
