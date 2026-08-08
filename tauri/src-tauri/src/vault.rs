@@ -2,7 +2,7 @@ use crate::{
     account::{value_string, AccountState},
     util::{
         atomic_write, ensure_dir, escape_toml, home_dir, keychain_get, keychain_set,
-        read_toml, read_top_level, remove_top_level, replace_table, stable_id,
+        public_message, read_toml, read_top_level, remove_top_level, replace_table, stable_id,
         upsert_top_level, validate_endpoint,
     },
 };
@@ -430,7 +430,6 @@ pub async fn import_managed_tokens(
                 .request(client, "/api/token/", Method::POST, Some(body))
                 .await?;
             operations.push(format!("{name}:created"));
-            existing = account.list_all_tokens(client).await?;
         }
     }
     existing = account.list_all_tokens(client).await?;
@@ -445,19 +444,36 @@ pub async fn import_managed_tokens(
         ids.push(id);
         final_tokens.push((id, name.to_string()));
     }
-    let key_data = account
+    let keys = match account
         .request(
             client,
             "/api/token/batch/keys",
             Method::POST,
             Some(json!({ "ids": ids })),
         )
-        .await?;
-    let keys = key_data
-        .get("keys")
-        .or_else(|| key_data.get("value"))
-        .cloned()
-        .unwrap_or(key_data);
+        .await
+    {
+        Ok(key_data) => key_data
+            .get("keys")
+            .or_else(|| key_data.get("value"))
+            .cloned()
+            .unwrap_or(key_data),
+        Err(error) => {
+            operations.push(format!("batch-keys-fallback:{}", public_message(&error)));
+            let mut fallback = serde_json::Map::new();
+            for id in &ids {
+                let data = account.get_token_key(client, *id).await?;
+                if let Some(key) = data
+                    .get("key")
+                    .or_else(|| data.get("token"))
+                    .and_then(Value::as_str)
+                {
+                    fallback.insert(id.to_string(), json!(key));
+                }
+            }
+            Value::Object(fallback)
+        }
+    };
     let mut tokens = Vec::new();
     for (id, name) in final_tokens {
         let mut key = pick_key(&keys, id, &name);

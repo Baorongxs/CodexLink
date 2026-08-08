@@ -97,6 +97,9 @@ for (const token of [
   'no-cache, no-store',
   'Origin',
   'Referer',
+  'page_size=100',
+  'get_token_key',
+  '/api/token/{id}/key',
 ]) {
   assert.ok(account.includes(token), `Missing New API auth compatibility token: ${token}`);
 }

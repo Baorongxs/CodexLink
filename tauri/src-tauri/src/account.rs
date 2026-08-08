@@ -153,6 +153,11 @@ impl AccountState {
                     .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
                     .header("Pragma", HeaderValue::from_static("no-cache"));
             }
+            if authenticated {
+                request = request
+                    .header("Origin", base_url.clone())
+                    .header("Referer", format!("{base_url}/"));
+            }
             if let Some(ref json_body) = body {
                 request = request
                     .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
@@ -528,15 +533,18 @@ impl AccountState {
             let data = self
                 .request(
                     client,
-                    &format!("/api/token/?p={page}&size=100"),
+                    &format!("/api/token/?p={page}&page_size=100"),
                     Method::GET,
                     None,
                 )
                 .await?;
             let items = data
                 .get("items")
+                .or_else(|| data.get("data"))
+                .or_else(|| data.get("value"))
                 .and_then(Value::as_array)
                 .cloned()
+                .or_else(|| data.as_array().cloned())
                 .unwrap_or_default();
             let count = items.len();
             all.extend(items);
@@ -546,6 +554,11 @@ impl AccountState {
             }
         }
         Ok(all)
+    }
+
+    pub async fn get_token_key(&mut self, client: &Client, id: i64) -> Result<Value, String> {
+        self.request(client, &format!("/api/token/{id}/key"), Method::POST, None)
+            .await
     }
 
     pub async fn resolve_usage(&mut self, client: &Client, request: &Value) -> Result<Value, String> {
