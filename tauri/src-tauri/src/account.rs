@@ -147,7 +147,7 @@ impl AccountState {
                 .request(method.clone(), endpoint)
                 .header(ACCEPT, HeaderValue::from_static("application/json"))
                 .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
-                .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.25 Tauri macOS"));
+                .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.26 Tauri macOS"));
             if authenticated && method == Method::GET {
                 request = request
                     .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
@@ -302,7 +302,7 @@ impl AccountState {
             .header(ACCEPT, HeaderValue::from_static("application/json"))
             .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.25 Tauri macOS"))
+            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.26 Tauri macOS"))
             .header("Origin", base_url.clone())
             .header("Referer", format!("{base_url}/"))
             .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))

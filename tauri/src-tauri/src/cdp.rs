@@ -90,15 +90,29 @@ pub async fn start_codex(
         stop_codex(app).await;
     }
     post_status(app, "正在启动 Codex…");
-    Command::new("/usr/bin/open")
-        .args([
+    let app_name = app_path
+        .file_stem()
+        .ok_or_else(|| "Codex 安装路径无效。".to_string())?;
+    let executable = app_path.join("Contents").join("MacOS").join(app_name);
+    let debug_arg = format!("--remote-debugging-port={debug_port}");
+    let mut command = if executable.exists() {
+        Command::new(executable)
+    } else {
+        let mut fallback = Command::new("/usr/bin/open");
+        fallback.args([
             "-na",
             app_path
                 .to_str()
                 .ok_or_else(|| "Codex 安装路径无效。".to_string())?,
             "--args",
-            &format!("--remote-debugging-port={debug_port}"),
+        ]);
+        fallback
+    };
+    command
+        .args([
+            debug_arg.as_str(),
             "--remote-debugging-address=127.0.0.1",
+            "--remote-allow-origins=*",
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -145,49 +159,95 @@ pub async fn stop_injection(app: &AppHandle) {
 }
 
 async fn find_page_socket(client: &reqwest::Client, port: u16) -> Result<String, String> {
-    let response = client
-        .get(format!("http://127.0.0.1:{port}/json/list"))
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!("调试端口 HTTP {}", response.status().as_u16()));
+    let mut last_error = "未找到 Codex 页面".to_string();
+    for endpoint in ["/json/list", "/json"] {
+        let response = match client
+            .get(format!("http://127.0.0.1:{port}{endpoint}"))
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                last_error = error.to_string();
+                continue;
+            }
+        };
+        if !response.status().is_success() {
+            last_error = format!("调试端口 HTTP {}", response.status().as_u16());
+            continue;
+        }
+        let targets: Vec<Value> = match response.json().await {
+            Ok(targets) => targets,
+            Err(error) => {
+                last_error = error.to_string();
+                continue;
+            }
+        };
+        if let Some(socket) = select_page_socket(&targets) {
+            return Ok(socket);
+        }
     }
-    let targets: Vec<Value> = response.json().await.map_err(|error| error.to_string())?;
-    let candidates: Vec<&Value> = targets
+    Err(last_error)
+}
+
+fn select_page_socket(targets: &[Value]) -> Option<String> {
+    targets
         .iter()
-        .filter(|target| {
-            target.get("type").and_then(Value::as_str) == Some("page")
-                && target
-                    .get("webSocketDebuggerUrl")
-                    .and_then(Value::as_str)
-                    .is_some()
-                && !target
-                    .get("url")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .starts_with("devtools://")
+        .filter_map(|target| {
+            let socket = target.get("webSocketDebuggerUrl")?.as_str()?;
+            if !(socket.starts_with("ws://") || socket.starts_with("wss://")) {
+                return None;
+            }
+            let target_type = target.get("type").and_then(Value::as_str).unwrap_or("").to_lowercase();
+            if !target_type.is_empty() && !matches!(target_type.as_str(), "page" | "webview" | "other") {
+                return None;
+            }
+            let url = target.get("url").and_then(Value::as_str).unwrap_or("");
+            let title = target.get("title").and_then(Value::as_str).unwrap_or("");
+            if url.starts_with("devtools://") {
+                return None;
+            }
+            let text = format!("{title} {url}").to_lowercase();
+            let app_shell = text.contains("codex")
+                || text.contains("chatgpt")
+                || text.contains("index.html")
+                || url.starts_with("app:")
+                || url.starts_with("file:");
+            if target_type == "other" && !app_shell {
+                return None;
+            }
+            let avatar = text.contains("avatar-overlay");
+            let blank = url.is_empty() || url.eq_ignore_ascii_case("about:blank") || url.ends_with("://");
+            let mut score = 50i32;
+            if avatar { score -= 500; }
+            if blank { score -= 200; }
+            if title.to_lowercase().contains("codex") { score += 120; }
+            if url.to_lowercase().contains("codex") { score += 80; }
+            if text.contains("chatgpt") { score += 40; }
+            if url.to_lowercase().contains("index.html") && !avatar { score += 180; }
+            if url.starts_with("app:") || url.starts_with("file:") { score += 60; }
+            else if url.starts_with("http:") || url.starts_with("https:") { score += 10; }
+            Some((score, socket.to_string()))
         })
-        .collect();
-    let preferred = candidates
-        .iter()
-        .copied()
-        .find(|target| {
-            let haystack = format!(
-                "{} {}",
-                target.get("title").and_then(Value::as_str).unwrap_or(""),
-                target.get("url").and_then(Value::as_str).unwrap_or("")
-            )
-            .to_lowercase();
-            haystack.contains("codex") || haystack.contains("chatgpt") || haystack.contains("index.html")
-        })
-        .or_else(|| candidates.first().copied())
-        .ok_or_else(|| "未找到 Codex 页面".to_string())?;
-    Ok(preferred
-        .get("webSocketDebuggerUrl")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string())
+        .filter(|(score, _)| *score >= 50)
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, socket)| socket)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_page_socket;
+    use serde_json::json;
+
+    #[test]
+    fn selects_macos_app_shell_and_skips_overlay() {
+        let targets = vec![
+            json!({ "type": "page", "url": "devtools://devtools", "webSocketDebuggerUrl": "ws://bad" }),
+            json!({ "type": "page", "title": "avatar-overlay", "url": "file:///avatar-overlay.html", "webSocketDebuggerUrl": "ws://overlay" }),
+            json!({ "type": "other", "url": "file:///Codex.app/Contents/Resources/app/index.html", "webSocketDebuggerUrl": "ws://codex" }),
+        ];
+        assert_eq!(select_page_socket(&targets).as_deref(), Some("ws://codex"));
+    }
 }
 
 async fn connect_cdp(app: AppHandle, url: &str) -> Result<CdpClient, String> {

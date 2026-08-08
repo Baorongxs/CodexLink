@@ -81,7 +81,7 @@ jobs:
           stage="$(mktemp -d)"
           cp -R "$app" "$stage/CodexLink.app"
           ln -s /Applications "$stage/Applications"
-          dmg="2026-08-06_CodexLink_macOS_Tauri_${ARCH_NAME}_v1.0.25.dmg"
+          dmg="2026-08-08_CodexLink_macOS_Tauri_${ARCH_NAME}_v1.0.26.dmg"
           hdiutil create -volname "CodexLink" -srcfolder "$stage" -ov -format UDZO "$dmg"
           hdiutil verify "$dmg"
           mount="$(mktemp -d)"
@@ -93,10 +93,10 @@ jobs:
           du -h "$dmg"
       - uses: actions/upload-artifact@v4
         with:
-          name: CodexLink-macOS-Tauri-${{ matrix.arch }}-v1.0.25
+          name: CodexLink-macOS-Tauri-${{ matrix.arch }}-v1.0.26
           path: |
-            tauri/2026-08-06_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.25.dmg
-            tauri/2026-08-06_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.25.dmg.sha256
+            tauri/2026-08-08_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.26.dmg
+            tauri/2026-08-08_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.26.dmg.sha256
           if-no-files-found: error
           retention-days: 14
 
@@ -109,7 +109,7 @@ jobs:
           ref: codex/build-tauri-mac-v1.0.25
       - uses: actions/download-artifact@v4
         with:
-          pattern: CodexLink-macOS-Tauri-*-v1.0.25
+          pattern: CodexLink-macOS-Tauri-*-v1.0.26
           path: tauri/dist
           merge-multiple: true
       - name: Commit verified installers to build branch
