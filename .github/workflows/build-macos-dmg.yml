@@ -3,7 +3,7 @@ name: Build macOS DMG
 on:
   push:
     branches:
-      - codex/build-mac-dmg-v1.0.25
+      - codex/build-mac-dmg-v1.0.27
   workflow_dispatch:
 
 permissions:

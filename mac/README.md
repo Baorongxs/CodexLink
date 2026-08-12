@@ -1,4 +1,4 @@
-# CodexLink macOS Electron v1.0.26
+# CodexLink macOS Electron v1.0.27
 
 Electron 版 macOS 源码，包含 Apple Silicon 与 Intel 双架构 DMG 构建脚本。
 

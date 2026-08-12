@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('macOS UI keeps the complete v1.0.25 action contract', () => {
+test('macOS UI keeps the complete v1.0.27 action contract', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'resources', 'launcher-ui.html'), 'utf8');
   for (const action of [
     'login', 'register', 'open-topup', 'create-topup-payment', 'import-api',

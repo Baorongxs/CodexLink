@@ -42,7 +42,7 @@ test('新版 New API 嵌套登录、Bearer 与刷新流程可用', async () => {
           access_expires_at: 1,
           session: { sid: 'session-new' }
         }
-      }, { 'Set-Cookie': 'refresh_session=refresh-cookie; Path=/; HttpOnly' });
+      }, { 'Set-Cookie': 'refresh_session=refresh-cookie; Path=/api/user/auth/refresh; HttpOnly' });
     }
     if (request.url === '/api/user/auth/refresh') {
       refreshCount += 1;
@@ -68,15 +68,25 @@ test('新版 New API 嵌套登录、Bearer 与刷新流程可用', async () => {
     }
     response.writeHead(404).end();
   }, async (baseUrl) => {
-    const account = new AccountService({ sessionPath: path.join(temp, 'session.dat'), safeStorage });
+    const sessionPath = path.join(temp, 'session.dat');
+    const account = new AccountService({ sessionPath, safeStorage });
     await account.login(baseUrl, 'new-user', 'password123');
     assert.equal(account.state.loggedIn, true);
+    assert.match(account.state.cookieHeader, /refresh_session=refresh-cookie/);
     assert.equal(refreshCount, 0);
-    await account.refreshBalance();
-    assert.equal(account.state.userId, '9527');
-    assert.equal(account.state.displayName, '新版用户');
-    assert.equal(account.state.accessToken, 'fresh-access');
-    assert.equal(account.state.authSessionId, 'session-new');
+
+    const restored = new AccountService({ sessionPath, safeStorage });
+    assert.equal(restored.state.loggedIn, true);
+    assert.match(restored.state.cookieHeader, /refresh_session=refresh-cookie/);
+    await Promise.all([
+      restored.ensureFreshAccessToken(false),
+      restored.ensureFreshAccessToken(false)
+    ]);
+    await restored.refreshBalance();
+    assert.equal(restored.state.userId, '9527');
+    assert.equal(restored.state.displayName, '新版用户');
+    assert.equal(restored.state.accessToken, 'fresh-access');
+    assert.equal(restored.state.authSessionId, 'session-new');
     assert.equal(refreshCount, 1);
   });
   fs.rmSync(temp, { recursive: true, force: true });
@@ -110,6 +120,32 @@ test('常见英文登录与网络错误会转为中文', () => {
   assert.equal(publicMessage('invalid credentials'), '用户名或密码错误。');
   assert.equal(publicMessage('Too Many Requests'), '操作过于频繁，请稍后再试。');
   assert.equal(publicMessage('fetch failed'), '无法连接服务器，请检查网络和服务地址。');
+});
+
+test('非 JSON 限流响应按 HTTP 状态提示，不误报响应格式', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codexlink-non-json-'));
+  await withServer((request, response) => {
+    response.writeHead(429, { 'Content-Type': 'text/html' });
+    response.end('<html><body>Too Many Requests</body></html>');
+  }, async (baseUrl) => {
+    const account = new AccountService({ sessionPath: path.join(temp, 'session.dat'), safeStorage });
+    Object.assign(account.state, { loggedIn: true, baseUrl, userId: '1' });
+    await assert.rejects(account.refreshBalance(), /操作过于频繁，请稍后再试。/);
+  });
+  fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test('兼容合并返回的多个 Set-Cookie 并完整持久化', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codexlink-cookie-'));
+  const account = new AccountService({ sessionPath: path.join(temp, 'session.dat'), safeStorage });
+  account.captureCookies({
+    headers: {
+      get: () => 'session=root-cookie; Path=/, refresh_session=refresh-cookie; Path=/api/user/auth/refresh; HttpOnly'
+    }
+  });
+  assert.match(account.state.cookieHeader, /session=root-cookie/);
+  assert.match(account.state.cookieHeader, /refresh_session=refresh-cookie/);
+  fs.rmSync(temp, { recursive: true, force: true });
 });
 
 test('新版令牌列表分页参数和裸数组响应保持兼容', async () => {

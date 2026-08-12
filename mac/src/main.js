@@ -11,7 +11,7 @@ const { TokenVaultService, importManagedTokens } = require('./services/token-vau
 const { atomicWrite, ensureDir, publicMessage } = require('./services/util');
 
 const APP_NAME = 'CodexLink';
-const APP_VERSION = '1.0.26';
+const APP_VERSION = '1.0.27';
 const RELEASE_API = 'https://api.github.com/repos/Baorongxs/CodexLink/releases/latest';
 const OFFICIAL_DOWNLOAD_URL = 'https://studio.baorongxs.top';
 const DOWNLOAD_URL = 'https://chatgpt.com/download/';

@@ -19,6 +19,7 @@ class AccountService {
     this.sessionPath = sessionPath;
     this.safeStorage = safeStorage;
     this.quotaPerUnit = 500000;
+    this.refreshPromise = null;
     this.state = {
       loggedIn: false, baseUrl: '', username: '', displayName: '', userId: '',
       cookieHeader: '', accessToken: '', accessExpiresAt: 0, authSessionId: '',
@@ -78,9 +79,10 @@ class AccountService {
   }
 
   captureCookies(response) {
-    const values = typeof response.headers.getSetCookie === 'function'
+    const rawValues = typeof response.headers.getSetCookie === 'function'
       ? response.headers.getSetCookie()
       : [response.headers.get('set-cookie')].filter(Boolean);
+    const values = rawValues.flatMap((value) => String(value).split(/,(?=\s*[^;,=\s]+=[^;,]*)/));
     const pairs = values.map((item) => String(item).split(';', 1)[0]).filter(Boolean);
     if (!pairs.length) return;
     const cookies = new Map();
@@ -102,11 +104,10 @@ class AccountService {
       await this.ensureFreshAccessToken(false);
     }
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      if (authenticated && attempt > 0) await this.ensureFreshAccessToken(true);
       const headers = {
         Accept: 'application/json',
         'Accept-Language': 'zh-CN,zh;q=0.9',
-        'User-Agent': 'CodexLink/1.0.25 macOS'
+        'User-Agent': 'CodexLink/1.0.27 macOS'
       };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (authenticated) {
@@ -122,14 +123,21 @@ class AccountService {
         if (this.state.accessToken) headers.Authorization = `Bearer ${this.state.accessToken}`;
         if (this.state.authSessionId) headers['X-Auth-Session'] = this.state.authSessionId;
       }
+      const requestAccessToken = this.state.accessToken;
       const response = await fetchWithTimeout(`${baseUrl}${relativePath}`, {
         method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'follow'
       });
       this.captureCookies(response);
       const text = await response.text();
       let envelope;
-      try { envelope = text ? JSON.parse(text) : {}; } catch (_) { throw new Error(`服务返回了无效数据（HTTP ${response.status}）。`); }
-      if (response.status === 401 && authenticated && attempt === 0 && this.isModernAuthentication()) continue;
+      try { envelope = text ? JSON.parse(text) : {}; } catch (_) {
+        if (!response.ok) throw new Error(this.apiFailureMessage({}, response.status));
+        throw new Error('服务器响应格式异常，请稍后重试。');
+      }
+      if (response.status === 401 && authenticated && attempt === 0 && this.isModernAuthentication()) {
+        if (requestAccessToken === this.state.accessToken) await this.ensureFreshAccessToken(true);
+        continue;
+      }
       if (!response.ok) throw new Error(this.apiFailureMessage(envelope, response.status));
       if (Object.prototype.hasOwnProperty.call(envelope, 'success') && !envelope.success) {
         throw new Error(this.apiFailureMessage(envelope, response.status));
@@ -213,18 +221,28 @@ class AccountService {
   }
 
   isModernAuthentication() {
-    return Boolean(this.state.accessToken);
+    return Boolean(this.state.accessToken && this.state.authSessionId);
   }
 
   async ensureFreshAccessToken(force) {
     if (!this.isModernAuthentication()) return;
     const now = Math.floor(Date.now() / 1000);
     if (!force && (!(Number(this.state.accessExpiresAt) > 0) || Number(this.state.accessExpiresAt) > now + 60)) return;
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = this.refreshAccessToken();
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  async refreshAccessToken() {
     const headers = {
       Accept: 'application/json',
       'Accept-Language': 'zh-CN,zh;q=0.9',
       'Content-Type': 'application/json',
-      'User-Agent': 'CodexLink/1.0.25 macOS',
+      'User-Agent': 'CodexLink/1.0.27 macOS',
       Origin: new URL(normalizeBase(this.state.baseUrl)).origin,
       Referer: `${normalizeBase(this.state.baseUrl)}/`,
       'Cache-Control': 'no-cache, no-store',
@@ -238,7 +256,10 @@ class AccountService {
     this.captureCookies(response);
     const text = await response.text();
     let envelope;
-    try { envelope = text ? JSON.parse(text) : {}; } catch (_) { throw new Error('刷新登录会话失败，请重新登录。'); }
+    try { envelope = text ? JSON.parse(text) : {}; } catch (_) {
+      if (!response.ok) throw new Error(this.apiFailureMessage({}, response.status));
+      throw new Error('服务器响应格式异常，请稍后重试。');
+    }
     if (!response.ok || !envelope.success) throw new Error(this.apiFailureMessage(envelope, response.status));
     const data = envelope.data || {};
     const user = data.user && typeof data.user === 'object' ? data.user : {};
