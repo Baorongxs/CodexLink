@@ -33,7 +33,7 @@ use vault::{import_managed_tokens, VaultState};
 use uuid::Uuid;
 
 const APP_NAME: &str = "CodexLink";
-const APP_VERSION: &str = "1.0.26";
+const APP_VERSION: &str = "1.0.27";
 const RELEASE_API: &str = "https://api.github.com/repos/Baorongxs/CodexLink/releases/latest";
 const OFFICIAL_DOWNLOAD_URL: &str = "https://studio.baorongxs.top";
 const CODEX_DMG_APPLE_SILICON: &str =

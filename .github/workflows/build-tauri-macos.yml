@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - codex/build-tauri-mac-v1.0.25
+      - codex/build-tauri-mac-v1.0.27
     paths:
       - "tauri/frontend/**"
       - "tauri/src-tauri/**"
@@ -81,7 +81,7 @@ jobs:
           stage="$(mktemp -d)"
           cp -R "$app" "$stage/CodexLink.app"
           ln -s /Applications "$stage/Applications"
-          dmg="2026-08-08_CodexLink_macOS_Tauri_${ARCH_NAME}_v1.0.26.dmg"
+          dmg="2026-08-12_CodexLink_macOS_Tauri_${ARCH_NAME}_v1.0.27.dmg"
           hdiutil create -volname "CodexLink" -srcfolder "$stage" -ov -format UDZO "$dmg"
           hdiutil verify "$dmg"
           mount="$(mktemp -d)"
@@ -93,10 +93,10 @@ jobs:
           du -h "$dmg"
       - uses: actions/upload-artifact@v4
         with:
-          name: CodexLink-macOS-Tauri-${{ matrix.arch }}-v1.0.26
+          name: CodexLink-macOS-Tauri-${{ matrix.arch }}-v1.0.27
           path: |
-            tauri/2026-08-08_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.26.dmg
-            tauri/2026-08-08_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.26.dmg.sha256
+            tauri/2026-08-12_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.27.dmg
+            tauri/2026-08-12_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.27.dmg.sha256
           if-no-files-found: error
           retention-days: 14
 
@@ -106,10 +106,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: codex/build-tauri-mac-v1.0.25
+          ref: codex/build-tauri-mac-v1.0.27
       - uses: actions/download-artifact@v4
         with:
-          pattern: CodexLink-macOS-Tauri-*-v1.0.26
+          pattern: CodexLink-macOS-Tauri-*-v1.0.27
           path: tauri/dist
           merge-multiple: true
       - name: Commit verified installers to build branch
@@ -120,4 +120,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f tauri/dist/*.dmg tauri/dist/*.sha256
           git commit -m "build(mac): collect verified DMGs [skip ci]"
-          git push origin HEAD:codex/build-tauri-mac-v1.0.25
+          git push origin HEAD:codex/build-tauri-mac-v1.0.27

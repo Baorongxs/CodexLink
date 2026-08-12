@@ -138,8 +138,9 @@ impl AccountState {
             self.ensure_logged_in()?;
             self.ensure_fresh_access_token(client, false).await?;
         }
+        let mut refresh_after_unauthorized = false;
         for attempt in 0..2 {
-            if authenticated && attempt > 0 {
+            if authenticated && attempt > 0 && refresh_after_unauthorized {
                 self.ensure_fresh_access_token(client, true).await?;
             }
             let endpoint = format!("{base_url}{relative_path}");
@@ -147,7 +148,7 @@ impl AccountState {
                 .request(method.clone(), endpoint)
                 .header(ACCEPT, HeaderValue::from_static("application/json"))
                 .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
-                .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.26 Tauri macOS"));
+                .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.27 Tauri macOS"));
             if authenticated && method == Method::GET {
                 request = request
                     .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
@@ -184,10 +185,16 @@ impl AccountState {
             let envelope: Value = if text.trim().is_empty() {
                 json!({})
             } else {
-                serde_json::from_str(&text)
-                    .map_err(|_| format!("服务返回了无效数据（HTTP {}）。", status.as_u16()))?
+                match serde_json::from_str(&text) {
+                    Ok(value) => value,
+                    Err(_) if !status.is_success() => {
+                        return Err(Self::api_failure_message(&json!({}), status.as_u16()));
+                    }
+                    Err(_) => return Err("服务器响应格式异常，请稍后重试。".to_string()),
+                }
             };
             if status.as_u16() == 401 && authenticated && attempt == 0 && self.is_modern_authentication() {
+                refresh_after_unauthorized = true;
                 continue;
             }
             if !status.is_success()
@@ -284,7 +291,7 @@ impl AccountState {
     }
 
     fn is_modern_authentication(&self) -> bool {
-        !self.access_token.is_empty()
+        !self.access_token.is_empty() && !self.auth_session_id.is_empty()
     }
 
     async fn ensure_fresh_access_token(&mut self, client: &Client, force: bool) -> Result<(), String> {
@@ -302,7 +309,7 @@ impl AccountState {
             .header(ACCEPT, HeaderValue::from_static("application/json"))
             .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.26 Tauri macOS"))
+            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.27 Tauri macOS"))
             .header("Origin", base_url.clone())
             .header("Referer", format!("{base_url}/"))
             .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
@@ -318,8 +325,13 @@ impl AccountState {
         let status = response.status();
         self.capture_cookies(response.headers());
         let text = response.text().await.map_err(|error| public_message(error))?;
-        let envelope: Value = serde_json::from_str(&text)
-            .map_err(|_| "刷新登录会话失败，请重新登录。".to_string())?;
+        let envelope: Value = match serde_json::from_str(&text) {
+            Ok(value) => value,
+            Err(_) if !status.is_success() => {
+                return Err(Self::api_failure_message(&json!({}), status.as_u16()));
+            }
+            Err(_) => return Err("服务器响应格式异常，请稍后重试。".to_string()),
+        };
         if !status.is_success() || !envelope.get("success").and_then(Value::as_bool).unwrap_or(false) {
             return Err(Self::api_failure_message(&envelope, status.as_u16()));
         }
