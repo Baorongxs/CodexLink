@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { spawn, execFile } = require('node:child_process');
+const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const WebSocket = require('ws');
 
@@ -38,7 +38,10 @@ class CodexService {
     try {
       await execFileAsync('/usr/bin/osascript', ['-e', `tell application "${appName.replace(/"/g, '\\"')}" to quit`], { timeout: 8000 });
     } catch (_) {}
-    await delay(800);
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (!await isApplicationRunning(appName)) return;
+      await delay(250);
+    }
   }
 
   async start({ debugPort = 9230, restart = false } = {}) {
@@ -47,21 +50,7 @@ class CodexService {
     this.debugPort = normalizePort(debugPort);
     if (restart) await this.stop();
     this.status('正在启动 Codex…');
-    const executable = path.join(appPath, 'Contents', 'MacOS', path.basename(appPath, '.app'));
-    const launchFile = fs.existsSync(executable) ? executable : '/usr/bin/open';
-    const launchArgs = launchFile === executable
-      ? [
-          `--remote-debugging-port=${this.debugPort}`,
-          '--remote-debugging-address=127.0.0.1',
-          '--remote-allow-origins=*'
-        ]
-      : [
-          '-na', appPath, '--args',
-          `--remote-debugging-port=${this.debugPort}`,
-          '--remote-debugging-address=127.0.0.1',
-          '--remote-allow-origins=*'
-        ];
-    spawn(launchFile, launchArgs, { detached: true, stdio: 'ignore' }).unref();
+    await execFileAsync('/usr/bin/open', buildLaunchArgs(appPath, this.debugPort), { timeout: 10000 });
     this.log('已启动 macOS Codex，正在连接页面增强功能。', 'info');
     await this.startInjection();
   }
@@ -216,15 +205,17 @@ function selectPageTarget(targets) {
     const type = String(target.type || '').toLowerCase();
     const url = String(target.url || '');
     const title = String(target.title || '');
-    if (url.startsWith('devtools://')) continue;
+    if (url.startsWith('devtools://') || /^data:text\/html/i.test(url)) continue;
     if (type && !['page', 'webview', 'other'].includes(type)) continue;
 
     const text = `${title} ${url}`;
     if (type === 'other' && !/codex|chatgpt|index\.html|^(app:|file:)/i.test(text)) continue;
     const avatar = /avatar-overlay/i.test(text);
+    const startupError = /failed to start|something went wrong|err_failed/i.test(text);
     const blank = !url || /^about:blank$/i.test(url) || /:\/\/$/.test(url);
     let score = 50;
     if (avatar) score -= 500;
+    if (startupError) score -= 500;
     if (blank) score -= 200;
     if (/codex/i.test(title)) score += 120;
     if (/codex/i.test(url)) score += 80;
@@ -242,8 +233,29 @@ function normalizePort(value) {
   return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 9230;
 }
 
+function buildLaunchArgs(appPath, debugPort) {
+  return [
+    '-F', '-na', appPath, '--args',
+    `--remote-debugging-port=${normalizePort(debugPort)}`,
+    '--remote-debugging-address=127.0.0.1',
+    '--remote-allow-origins=*'
+  ];
+}
+
+async function isApplicationRunning(appName) {
+  try {
+    const escaped = String(appName || 'Codex').replace(/"/g, '\\"');
+    const { stdout } = await execFileAsync(
+      '/usr/bin/osascript', ['-e', `application "${escaped}" is running`], { timeout: 3000 }
+    );
+    return String(stdout).trim().toLowerCase() === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-module.exports = { CodexService, findPageSocket, normalizePort, selectPageTarget };
+module.exports = { CodexService, buildLaunchArgs, findPageSocket, normalizePort, selectPageTarget };

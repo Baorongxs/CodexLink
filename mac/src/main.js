@@ -438,7 +438,7 @@ async function selectRoute(payload) {
   tokenVault.selectProfile(String(payload.profileId));
   refreshRoutes(true);
   postToast('令牌已切换，正在重新打开 Codex');
-  await startCodex(payload, true);
+  await startCodex(payload, false);
 }
 
 async function setOfficialMode(enabled) {
@@ -447,7 +447,7 @@ async function setOfficialMode(enabled) {
   tokenVault.setOfficialMode(enabled);
   refreshRoutes(true);
   postToast(enabled ? '已打开官方账号登录' : '已恢复最近使用的 API');
-  await startCodex({}, true);
+  await startCodex({}, false);
 }
 
 async function importCcSwitch() {
