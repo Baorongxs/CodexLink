@@ -81,7 +81,7 @@ jobs:
           stage="$(mktemp -d)"
           cp -R "$app" "$stage/CodexLink.app"
           ln -s /Applications "$stage/Applications"
-          dmg="2026-08-12_CodexLink_macOS_Tauri_${ARCH_NAME}_v1.0.27.dmg"
+          dmg="2026-08-14_CodexLink_macOS_Tauri_${ARCH_NAME}_v1.0.27.dmg"
           hdiutil create -volname "CodexLink" -srcfolder "$stage" -ov -format UDZO "$dmg"
           hdiutil verify "$dmg"
           mount="$(mktemp -d)"
@@ -95,8 +95,8 @@ jobs:
         with:
           name: CodexLink-macOS-Tauri-${{ matrix.arch }}-v1.0.27
           path: |
-            tauri/2026-08-12_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.27.dmg
-            tauri/2026-08-12_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.27.dmg.sha256
+            tauri/2026-08-14_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.27.dmg
+            tauri/2026-08-14_CodexLink_macOS_Tauri_${{ matrix.arch }}_v1.0.27.dmg.sha256
           if-no-files-found: error
           retention-days: 14
 

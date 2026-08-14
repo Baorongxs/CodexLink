@@ -4,7 +4,6 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     path::PathBuf,
-    process::{Command, Stdio},
     time::Duration,
 };
 use tauri::{AppHandle, Manager};
@@ -77,7 +76,26 @@ pub async fn stop_codex(app: &AppHandle) {
         .kill_on_drop(true)
         .output()
         .await;
-    tokio::time::sleep(Duration::from_millis(800)).await;
+    for _ in 0..40 {
+        if !is_application_running(&app_name).await {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+async fn is_application_running(app_name: &str) -> bool {
+    tokio::process::Command::new("/usr/bin/osascript")
+        .args(["-e", &format!("application \"{app_name}\" is running")])
+        .kill_on_drop(true)
+        .output()
+        .await
+        .ok()
+        .is_some_and(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .eq_ignore_ascii_case("true")
+        })
 }
 
 pub async fn start_codex(
@@ -90,35 +108,26 @@ pub async fn start_codex(
         stop_codex(app).await;
     }
     post_status(app, "正在启动 Codex…");
-    let app_name = app_path
-        .file_stem()
-        .ok_or_else(|| "Codex 安装路径无效。".to_string())?;
-    let executable = app_path.join("Contents").join("MacOS").join(app_name);
     let debug_arg = format!("--remote-debugging-port={debug_port}");
-    let mut command = if executable.exists() {
-        Command::new(executable)
-    } else {
-        let mut fallback = Command::new("/usr/bin/open");
-        fallback.args([
+    let output = tokio::process::Command::new("/usr/bin/open")
+        .args([
+            "-F",
             "-na",
             app_path
                 .to_str()
                 .ok_or_else(|| "Codex 安装路径无效。".to_string())?,
             "--args",
-        ]);
-        fallback
-    };
-    command
-        .args([
             debug_arg.as_str(),
             "--remote-debugging-address=127.0.0.1",
             "--remote-allow-origins=*",
         ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+        .kill_on_drop(true)
+        .output()
+        .await
         .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
     post_log(app, "已启动 macOS Codex，正在连接页面增强功能。", "info");
     start_injection(app, debug_port).await
 }
@@ -204,7 +213,7 @@ fn select_page_socket(targets: &[Value]) -> Option<String> {
             }
             let url = target.get("url").and_then(Value::as_str).unwrap_or("");
             let title = target.get("title").and_then(Value::as_str).unwrap_or("");
-            if url.starts_with("devtools://") {
+            if url.starts_with("devtools://") || url.to_lowercase().starts_with("data:text/html") {
                 return None;
             }
             let text = format!("{title} {url}").to_lowercase();
@@ -217,9 +226,13 @@ fn select_page_socket(targets: &[Value]) -> Option<String> {
                 return None;
             }
             let avatar = text.contains("avatar-overlay");
+            let startup_error = text.contains("failed to start")
+                || text.contains("something went wrong")
+                || text.contains("err_failed");
             let blank = url.is_empty() || url.eq_ignore_ascii_case("about:blank") || url.ends_with("://");
             let mut score = 50i32;
             if avatar { score -= 500; }
+            if startup_error { score -= 500; }
             if blank { score -= 200; }
             if title.to_lowercase().contains("codex") { score += 120; }
             if url.to_lowercase().contains("codex") { score += 80; }
@@ -244,6 +257,7 @@ mod tests {
         let targets = vec![
             json!({ "type": "page", "url": "devtools://devtools", "webSocketDebuggerUrl": "ws://bad" }),
             json!({ "type": "page", "title": "avatar-overlay", "url": "file:///avatar-overlay.html", "webSocketDebuggerUrl": "ws://overlay" }),
+            json!({ "type": "page", "title": "ChatGPT failed to start", "url": "data:text/html;charset=utf-8,%3Ch1%3ESomething%20went%20wrong", "webSocketDebuggerUrl": "ws://error" }),
             json!({ "type": "other", "url": "file:///Codex.app/Contents/Resources/app/index.html", "webSocketDebuggerUrl": "ws://codex" }),
         ];
         assert_eq!(select_page_socket(&targets).as_deref(), Some("ws://codex"));

@@ -577,7 +577,7 @@ async fn select_route(
     state.vault.lock().await.select_profile(&profile_id)?;
     refresh_routes(app, state).await;
     post_toast(app, "令牌已切换，正在重新打开 Codex", false);
-    start_codex_action(app, state, payload, true).await
+    start_codex_action(app, state, payload, false).await
 }
 
 async fn set_official_mode(
@@ -605,7 +605,7 @@ async fn set_official_mode(
         },
         false,
     );
-    start_codex_action(app, state, &json!({}), true).await
+    start_codex_action(app, state, &json!({}), false).await
 }
 
 async fn start_codex_action(
