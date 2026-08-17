@@ -327,8 +327,8 @@ async fn dispatch_action(
             )
             .await
         }
-        "start-codex" => start_codex_action(app, state, payload, false).await,
-        "restart-codex" => start_codex_action(app, state, payload, true).await,
+        "start-codex" => start_codex_action(app, state, payload, false, false).await,
+        "restart-codex" => start_codex_action(app, state, payload, true, false).await,
         "stop-inject" => {
             stop_injection(app).await;
             post_status(app, "页面增强已停止");
@@ -573,11 +573,11 @@ async fn select_route(
         return Err("未指定令牌。".to_string());
     }
     post_status(app, "正在切换令牌…");
-    stop_codex(app).await;
+    stop_codex(app).await?;
     state.vault.lock().await.select_profile(&profile_id)?;
     refresh_routes(app, state).await;
     post_toast(app, "令牌已切换，正在重新打开 Codex", false);
-    start_codex_action(app, state, payload, false).await
+    start_codex_action(app, state, payload, true, true).await
 }
 
 async fn set_official_mode(
@@ -593,7 +593,7 @@ async fn set_official_mode(
             "正在恢复 API…"
         },
     );
-    stop_codex(app).await;
+    stop_codex(app).await?;
     state.vault.lock().await.set_official_mode(enabled)?;
     refresh_routes(app, state).await;
     post_toast(
@@ -605,7 +605,7 @@ async fn set_official_mode(
         },
         false,
     );
-    start_codex_action(app, state, &json!({}), false).await
+    start_codex_action(app, state, &json!({}), true, true).await
 }
 
 async fn start_codex_action(
@@ -613,19 +613,31 @@ async fn start_codex_action(
     state: &AppState,
     payload: &Value,
     restart: bool,
+    already_stopped: bool,
 ) -> Result<(), String> {
+    post_status(app, if restart { "正在重启 Codex…" } else { "正在启动 Codex…" });
+    if !already_stopped {
+        stop_codex(app).await?;
+    }
     state.vault.lock().await.ensure_current_configuration()?;
-    let mut settings = state.settings.lock().await;
-    settings.debug_port = normalize_port(
-        payload
-            .get("debugPort")
-            .and_then(Value::as_i64)
-            .unwrap_or(settings.debug_port as i64),
-    );
-    settings.save(&state.settings_path)?;
-    let debug_port = settings.debug_port;
-    drop(settings);
-    start_codex(app, debug_port, restart).await?;
+    let requested_port = {
+        let settings = state.settings.lock().await;
+        normalize_port(
+            payload
+                .get("debugPort")
+                .and_then(Value::as_i64)
+                .unwrap_or(settings.debug_port as i64),
+        )
+    };
+    let debug_port = start_codex(app, requested_port).await?;
+    if debug_port != requested_port {
+        post_log(app, "默认连接通道不可用，已自动选择可用通道。", "info");
+    }
+    {
+        let mut settings = state.settings.lock().await;
+        settings.debug_port = debug_port;
+        settings.save(&state.settings_path)?;
+    }
     post_status(app, "Codex 已启动");
     Ok(())
 }
@@ -634,7 +646,7 @@ async fn backup_conversations(app: &AppHandle, state: &AppState) -> Result<(), S
     state.history_busy.store(true, Ordering::SeqCst);
     post(app, json!({ "type": "history-operation", "busy": true }));
     let result = async {
-        stop_codex(app).await;
+        stop_codex(app).await?;
         let value = state.conversations.create_backup(
             "codexlink-conversations",
             |percent, meta| {
@@ -677,7 +689,7 @@ async fn restore_conversations(app: &AppHandle, state: &AppState) -> Result<(), 
     state.history_busy.store(true, Ordering::SeqCst);
     post(app, json!({ "type": "history-operation", "busy": true }));
     let result = async {
-        stop_codex(app).await;
+        stop_codex(app).await?;
         let value = state.conversations.restore_latest(|percent, meta| {
             post_progress(app, "恢复本地对话", percent, meta, false, false, false);
         })?;
@@ -707,7 +719,7 @@ async fn repair_sidebar(app: &AppHandle, state: &AppState) -> Result<(), String>
     state.history_busy.store(true, Ordering::SeqCst);
     post(app, json!({ "type": "history-operation", "busy": true }));
     let result = async {
-        stop_codex(app).await;
+        stop_codex(app).await?;
         let value = state.conversations.repair_sidebar()?;
         post_toast(
             app,
@@ -1121,7 +1133,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
-                    let _ = start_codex_action(&app, &state, &json!({}), false).await;
+                    let _ = start_codex_action(&app, &state, &json!({}), false, false).await;
                 });
             }
             "quit" => {

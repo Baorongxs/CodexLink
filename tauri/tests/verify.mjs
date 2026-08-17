@@ -35,9 +35,13 @@ assert.match(rust, /Command::new\("\/usr\/bin\/open"\)/);
 assert.match(rust, /\.arg\("-R"\)/);
 assert.doesNotMatch(rust, /hdiutil|ditto|install_app_bundle|find_app_bundle/);
 assert.match(cdp, /Command::new\("\/usr\/bin\/open"\)/);
-assert.match(cdp, /"-F",\s*"-na"/);
+assert.match(cdp, /"-a"\.to_string\(\)/);
+assert.doesNotMatch(cdp, /"-F"\.to_string\(\)|"-na"\.to_string\(\)|"-n"\.to_string\(\)/);
 assert.doesNotMatch(cdp, /join\("Contents"\).*join\("MacOS"\)/);
 assert.match(cdp, /--remote-allow-origins=\*/);
+assert.match(cdp, /parse_bundle_process_ids/);
+assert.match(cdp, /signal_bundle_processes/);
+assert.match(cdp, /TcpListener::bind/);
 assert.match(cdp, /data:text\/html/);
 assert.match(cdp, /\["\/json\/list", "\/json"\]/);
 assert.match(cdp, /"page" \| "webview" \| "other"/);
@@ -48,6 +52,8 @@ assert.match(contextBar, /width:176px!important/);
 assert.match(contextBar, /bottom:12px!important/);
 assert.match(contextBar, /alignBelowComposer/);
 assert.match(contextBar, /lastRealtimeAt/);
+assert.match(rust, /if !already_stopped/);
+assert.match(rust, /start_codex_action\(app, state, payload, true, true\)/);
 
 const localOnly = new Set([
   "open-login",

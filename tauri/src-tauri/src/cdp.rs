@@ -2,8 +2,8 @@ use crate::{post_log, post_status, AppState};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
-    path::PathBuf,
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
     time::Duration,
 };
 use tauri::{AppHandle, Manager};
@@ -65,62 +65,119 @@ pub fn normalize_port(value: i64) -> u16 {
     }
 }
 
-pub async fn stop_codex(app: &AppHandle) {
+pub async fn stop_codex(app: &AppHandle) -> Result<(), String> {
     stop_injection(app).await;
-    let app_name = find_install()
-        .and_then(|path| path.file_stem().map(|value| value.to_string_lossy().to_string()))
-        .unwrap_or_else(|| "Codex".to_string())
+    let Some(app_path) = find_install() else {
+        return Ok(());
+    };
+    if bundle_process_ids(&app_path).await.is_empty() {
+        return Ok(());
+    }
+    let escaped_path = app_path
+        .to_string_lossy()
+        .replace('\\', "\\\\")
         .replace('"', "\\\"");
     let _ = tokio::process::Command::new("/usr/bin/osascript")
-        .args(["-e", &format!("tell application \"{app_name}\" to quit")])
+        .args(["-e", &format!("tell application \"{escaped_path}\" to quit")])
         .kill_on_drop(true)
         .output()
         .await;
-    for _ in 0..40 {
-        if !is_application_running(&app_name).await {
-            return;
+    if wait_for_bundle_exit(&app_path, Duration::from_secs(3)).await {
+        return Ok(());
+    }
+    signal_bundle_processes(&app_path, "TERM").await;
+    if wait_for_bundle_exit(&app_path, Duration::from_millis(2500)).await {
+        return Ok(());
+    }
+    signal_bundle_processes(&app_path, "KILL").await;
+    if wait_for_bundle_exit(&app_path, Duration::from_millis(2500)).await {
+        return Ok(());
+    }
+    Err("Codex 仍在运行，无法安全重新打开。请先退出 Codex 后重试。".to_string())
+}
+
+async fn bundle_process_ids(app_path: &Path) -> Vec<i32> {
+    let output = tokio::process::Command::new("/bin/ps")
+        .args(["-ww", "-axo", "pid=,ppid=,command="])
+        .kill_on_drop(true)
+        .output()
+        .await
+        .ok();
+    output
+        .map(|value| parse_bundle_process_ids(&String::from_utf8_lossy(&value.stdout), app_path))
+        .unwrap_or_default()
+}
+
+fn parse_bundle_process_ids(process_table: &str, app_path: &Path) -> Vec<i32> {
+    let normalized = app_path.to_string_lossy().replace('\\', "/");
+    let prefix = format!("{}/Contents/", normalized.trim_end_matches('/'));
+    let rows: Vec<(i32, i32, String)> = process_table
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let pid = parts.next()?.parse().ok()?;
+            let parent = parts.next()?.parse().ok()?;
+            let command = parts.collect::<Vec<_>>().join(" ").replace('\\', "/");
+            Some((pid, parent, command))
+        })
+        .collect();
+    let mut selected: HashSet<i32> = rows
+        .iter()
+        .filter(|(_, _, command)| {
+            command.starts_with(&prefix) || command.starts_with(&format!("\"{prefix}"))
+        })
+        .map(|(pid, _, _)| *pid)
+        .collect();
+    loop {
+        let before = selected.len();
+        for (pid, parent, _) in &rows {
+            if selected.contains(parent) {
+                selected.insert(*pid);
+            }
+        }
+        if selected.len() == before {
+            break;
+        }
+    }
+    let mut ids: Vec<i32> = selected.into_iter().collect();
+    ids.sort_unstable_by(|left, right| right.cmp(left));
+    ids
+}
+
+async fn wait_for_bundle_exit(app_path: &Path, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if bundle_process_ids(app_path).await.is_empty() {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 
-async fn is_application_running(app_name: &str) -> bool {
-    tokio::process::Command::new("/usr/bin/osascript")
-        .args(["-e", &format!("application \"{app_name}\" is running")])
-        .kill_on_drop(true)
-        .output()
-        .await
-        .ok()
-        .is_some_and(|output| {
-            String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .eq_ignore_ascii_case("true")
-        })
+async fn signal_bundle_processes(app_path: &Path, signal: &str) {
+    let ids = bundle_process_ids(app_path).await;
+    if ids.is_empty() {
+        return;
+    }
+    let mut command = tokio::process::Command::new("/bin/kill");
+    command.arg(format!("-{signal}"));
+    command.args(ids.iter().map(i32::to_string));
+    let _ = command.kill_on_drop(true).output().await;
 }
 
 pub async fn start_codex(
     app: &AppHandle,
     debug_port: u16,
-    restart: bool,
-) -> Result<(), String> {
+) -> Result<u16, String> {
     let app_path = find_install().ok_or_else(|| "未找到 Codex，请先点击“安装 Codex”。".to_string())?;
-    if restart {
-        stop_codex(app).await;
-    }
+    let debug_port = select_available_debug_port(debug_port).await?;
     post_status(app, "正在启动 Codex…");
-    let debug_arg = format!("--remote-debugging-port={debug_port}");
+    let launch_args = build_launch_args(&app_path, debug_port)?;
     let output = tokio::process::Command::new("/usr/bin/open")
-        .args([
-            "-F",
-            "-na",
-            app_path
-                .to_str()
-                .ok_or_else(|| "Codex 安装路径无效。".to_string())?,
-            "--args",
-            debug_arg.as_str(),
-            "--remote-debugging-address=127.0.0.1",
-            "--remote-allow-origins=*",
-        ])
+        .args(&launch_args)
         .kill_on_drop(true)
         .output()
         .await
@@ -129,7 +186,35 @@ pub async fn start_codex(
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
     post_log(app, "已启动 macOS Codex，正在连接页面增强功能。", "info");
-    start_injection(app, debug_port).await
+    start_injection(app, debug_port).await?;
+    Ok(debug_port)
+}
+
+fn build_launch_args(app_path: &Path, debug_port: u16) -> Result<Vec<String>, String> {
+    Ok(vec![
+        "-a".to_string(),
+        app_path
+            .to_str()
+            .ok_or_else(|| "Codex 安装路径无效。".to_string())?
+            .to_string(),
+        "--args".to_string(),
+        format!("--remote-debugging-port={debug_port}"),
+        "--remote-debugging-address=127.0.0.1".to_string(),
+        "--remote-allow-origins=*".to_string(),
+    ])
+}
+
+async fn select_available_debug_port(preferred: u16) -> Result<u16, String> {
+    if let Ok(listener) = tokio::net::TcpListener::bind(("127.0.0.1", preferred)).await {
+        drop(listener);
+        return Ok(preferred);
+    }
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .map_err(|error| error.to_string())?;
+    let port = listener.local_addr().map_err(|error| error.to_string())?.port();
+    drop(listener);
+    Ok(port)
 }
 
 pub async fn start_injection(app: &AppHandle, debug_port: u16) -> Result<(), String> {
@@ -249,8 +334,9 @@ fn select_page_socket(targets: &[Value]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::select_page_socket;
+    use super::{build_launch_args, parse_bundle_process_ids, select_page_socket};
     use serde_json::json;
+    use std::path::Path;
 
     #[test]
     fn selects_macos_app_shell_and_skips_overlay() {
@@ -261,6 +347,33 @@ mod tests {
             json!({ "type": "other", "url": "file:///Codex.app/Contents/Resources/app/index.html", "webSocketDebuggerUrl": "ws://codex" }),
         ];
         assert_eq!(select_page_socket(&targets).as_deref(), Some("ws://codex"));
+    }
+
+    #[test]
+    fn reopens_one_launchservices_instance() {
+        let args = build_launch_args(Path::new("/Applications/ChatGPT.app"), 9230).unwrap();
+        assert_eq!(
+            args.iter().take(3).map(String::as_str).collect::<Vec<_>>(),
+            vec!["-a", "/Applications/ChatGPT.app", "--args"]
+        );
+        assert!(!args.iter().any(|value| matches!(value.as_str(), "-n" | "-na" | "-F")));
+        assert!(args.iter().any(|value| value == "--remote-debugging-port=9230"));
+    }
+
+    #[test]
+    fn finds_bundle_helpers_and_descendants_only() {
+        let ids = parse_bundle_process_ids(
+            r#"
+  100     1 /Applications/Codex.app/Contents/MacOS/ChatGPT --remote-debugging-port=9230
+  101   100 /Applications/Codex.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper
+  102   101 /usr/bin/helper-child
+  200     1 /usr/local/bin/codex
+  201     1 /Applications/Other.app/Contents/MacOS/Other /Applications/Codex.app
+  202     1 /Applications/Other.app/Contents/MacOS/Other /Applications/Codex.app/Contents/Resources/file
+            "#,
+            Path::new("/Applications/Codex.app"),
+        );
+        assert_eq!(ids, vec![102, 101, 100]);
     }
 }
 
