@@ -91,6 +91,7 @@ pub struct AppState {
     vault: Mutex<VaultState>,
     conversations: ConversationService,
     cdp: Mutex<Option<CdpClient>>,
+    codex_launch_path: Mutex<Option<PathBuf>>,
     history_busy: AtomicBool,
     available_update: Mutex<Option<AvailableUpdate>>,
 }
@@ -1177,6 +1178,7 @@ pub fn run() {
                 conversations: ConversationService::new()
                     .map_err(std::io::Error::other)?,
                 cdp: Mutex::new(None),
+                codex_launch_path: Mutex::new(None),
                 history_busy: AtomicBool::new(false),
                 available_update: Mutex::new(None),
             });

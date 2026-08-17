@@ -45,7 +45,7 @@ impl CdpClient {
     }
 }
 
-pub fn find_install() -> Option<PathBuf> {
+pub fn find_installs() -> Vec<PathBuf> {
     let home = dirs::home_dir().unwrap_or_default();
     [
         PathBuf::from("/Applications/Codex.app"),
@@ -54,7 +54,12 @@ pub fn find_install() -> Option<PathBuf> {
         home.join("Applications/ChatGPT.app"),
     ]
     .into_iter()
-    .find(|path| path.exists())
+    .filter(|path| path.exists())
+    .collect()
+}
+
+pub fn find_install() -> Option<PathBuf> {
+    find_installs().into_iter().next()
 }
 
 pub fn normalize_port(value: i64) -> u16 {
@@ -67,36 +72,40 @@ pub fn normalize_port(value: i64) -> u16 {
 
 pub async fn stop_codex(app: &AppHandle) -> Result<(), String> {
     stop_injection(app).await;
-    let Some(app_path) = find_install() else {
-        return Ok(());
-    };
-    if bundle_process_ids(&app_path).await.is_empty() {
+    let app_paths = find_installs();
+    if app_paths.is_empty() {
         return Ok(());
     }
-    let escaped_path = app_path
-        .to_string_lossy()
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"");
-    let _ = tokio::process::Command::new("/usr/bin/osascript")
-        .args(["-e", &format!("tell application \"{escaped_path}\" to quit")])
-        .kill_on_drop(true)
-        .output()
-        .await;
-    if wait_for_bundle_exit(&app_path, Duration::from_secs(3)).await {
-        return Ok(());
+
+    for app_path in &app_paths {
+        if !bundle_process_ids(std::slice::from_ref(app_path)).await.is_empty() {
+            *app.state::<AppState>().codex_launch_path.lock().await = Some(app_path.clone());
+            break;
+        }
     }
-    signal_bundle_processes(&app_path, "TERM").await;
-    if wait_for_bundle_exit(&app_path, Duration::from_millis(2500)).await {
-        return Ok(());
+
+    if !bundle_process_ids(&app_paths).await.is_empty() {
+        // Apple Events can leave Codex/ChatGPT displaying its fatal
+        // startup/update dialog. Terminate every installed desktop bundle and
+        // helper tree, matching the verified Windows restart contract.
+        signal_bundle_processes(&app_paths, "TERM").await;
+        if !wait_for_bundle_exit(&app_paths, Duration::from_millis(1500)).await {
+            signal_bundle_processes(&app_paths, "KILL").await;
+        }
+        if !wait_for_bundle_exit(&app_paths, Duration::from_secs(5)).await {
+            signal_bundle_processes(&app_paths, "KILL").await;
+        }
+        if !wait_for_bundle_exit(&app_paths, Duration::from_millis(2500)).await {
+            return Err("Codex 仍在运行，无法安全重新打开。请先退出 Codex 后重试。".to_string());
+        }
     }
-    signal_bundle_processes(&app_path, "KILL").await;
-    if wait_for_bundle_exit(&app_path, Duration::from_millis(2500)).await {
-        return Ok(());
-    }
-    Err("Codex 仍在运行，无法安全重新打开。请先退出 Codex 后重试。".to_string())
+
+    clear_stale_singleton_files();
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    Ok(())
 }
 
-async fn bundle_process_ids(app_path: &Path) -> Vec<i32> {
+async fn bundle_process_ids(app_paths: &[PathBuf]) -> Vec<i32> {
     let output = tokio::process::Command::new("/bin/ps")
         .args(["-ww", "-axo", "pid=,ppid=,command="])
         .kill_on_drop(true)
@@ -104,13 +113,18 @@ async fn bundle_process_ids(app_path: &Path) -> Vec<i32> {
         .await
         .ok();
     output
-        .map(|value| parse_bundle_process_ids(&String::from_utf8_lossy(&value.stdout), app_path))
+        .map(|value| parse_bundle_process_ids(&String::from_utf8_lossy(&value.stdout), app_paths))
         .unwrap_or_default()
 }
 
-fn parse_bundle_process_ids(process_table: &str, app_path: &Path) -> Vec<i32> {
-    let normalized = app_path.to_string_lossy().replace('\\', "/");
-    let prefix = format!("{}/Contents/", normalized.trim_end_matches('/'));
+fn parse_bundle_process_ids(process_table: &str, app_paths: &[PathBuf]) -> Vec<i32> {
+    let prefixes: Vec<String> = app_paths
+        .iter()
+        .map(|app_path| {
+            let normalized = app_path.to_string_lossy().replace('\\', "/");
+            format!("{}/Contents/", normalized.trim_end_matches('/'))
+        })
+        .collect();
     let rows: Vec<(i32, i32, String)> = process_table
         .lines()
         .filter_map(|line| {
@@ -124,7 +138,9 @@ fn parse_bundle_process_ids(process_table: &str, app_path: &Path) -> Vec<i32> {
     let mut selected: HashSet<i32> = rows
         .iter()
         .filter(|(_, _, command)| {
-            command.starts_with(&prefix) || command.starts_with(&format!("\"{prefix}"))
+            prefixes.iter().any(|prefix| {
+                command.starts_with(prefix) || command.starts_with(&format!("\"{prefix}"))
+            })
         })
         .map(|(pid, _, _)| *pid)
         .collect();
@@ -144,10 +160,10 @@ fn parse_bundle_process_ids(process_table: &str, app_path: &Path) -> Vec<i32> {
     ids
 }
 
-async fn wait_for_bundle_exit(app_path: &Path, timeout: Duration) -> bool {
+async fn wait_for_bundle_exit(app_paths: &[PathBuf], timeout: Duration) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        if bundle_process_ids(app_path).await.is_empty() {
+        if bundle_process_ids(app_paths).await.is_empty() {
             return true;
         }
         if tokio::time::Instant::now() >= deadline {
@@ -157,8 +173,8 @@ async fn wait_for_bundle_exit(app_path: &Path, timeout: Duration) -> bool {
     }
 }
 
-async fn signal_bundle_processes(app_path: &Path, signal: &str) {
-    let ids = bundle_process_ids(app_path).await;
+async fn signal_bundle_processes(app_paths: &[PathBuf], signal: &str) {
+    let ids = bundle_process_ids(app_paths).await;
     if ids.is_empty() {
         return;
     }
@@ -168,11 +184,25 @@ async fn signal_bundle_processes(app_path: &Path, signal: &str) {
     let _ = command.kill_on_drop(true).output().await;
 }
 
+fn clear_stale_singleton_files() {
+    let home = dirs::home_dir().unwrap_or_default();
+    for root_name in ["Codex", "ChatGPT", "com.openai.codex", "com.openai.chat"] {
+        let root = home.join("Library").join("Application Support").join(root_name);
+        for file_name in ["SingletonCookie", "SingletonLock", "SingletonSocket"] {
+            let _ = std::fs::remove_file(root.join(file_name));
+        }
+    }
+}
+
 pub async fn start_codex(
     app: &AppHandle,
     debug_port: u16,
 ) -> Result<u16, String> {
-    let app_path = find_install().ok_or_else(|| "未找到 Codex，请先点击“安装 Codex”。".to_string())?;
+    let remembered_path = app.state::<AppState>().codex_launch_path.lock().await.clone();
+    let app_path = remembered_path
+        .filter(|path| path.exists())
+        .or_else(find_install)
+        .ok_or_else(|| "未找到 Codex，请先点击“安装 Codex”。".to_string())?;
     let debug_port = select_available_debug_port(debug_port).await?;
     post_status(app, "正在启动 Codex…");
     let launch_args = build_launch_args(&app_path, debug_port)?;
@@ -336,7 +366,7 @@ fn select_page_socket(targets: &[Value]) -> Option<String> {
 mod tests {
     use super::{build_launch_args, parse_bundle_process_ids, select_page_socket};
     use serde_json::json;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn selects_macos_app_shell_and_skips_overlay() {
@@ -371,9 +401,27 @@ mod tests {
   201     1 /Applications/Other.app/Contents/MacOS/Other /Applications/Codex.app
   202     1 /Applications/Other.app/Contents/MacOS/Other /Applications/Codex.app/Contents/Resources/file
             "#,
-            Path::new("/Applications/Codex.app"),
+            &[PathBuf::from("/Applications/Codex.app")],
         );
         assert_eq!(ids, vec![102, 101, 100]);
+    }
+
+    #[test]
+    fn finds_both_installed_desktop_trees_before_restart() {
+        let ids = parse_bundle_process_ids(
+            r#"
+  100     1 /Applications/Codex.app/Contents/MacOS/ChatGPT
+  101   100 /Applications/Codex.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper
+  200     1 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT
+  201   200 /Applications/ChatGPT.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper
+  300     1 /usr/local/bin/codex
+            "#,
+            &[
+                PathBuf::from("/Applications/Codex.app"),
+                PathBuf::from("/Applications/ChatGPT.app"),
+            ],
+        );
+        assert_eq!(ids, vec![201, 200, 101, 100]);
     }
 }
 
@@ -484,11 +532,9 @@ async fn connect_cdp(app: AppHandle, url: &str) -> Result<CdpClient, String> {
 fn build_inject_bundle() -> String {
     [
         include_str!("../../frontend/inject/bridge.js"),
-        include_str!("../../frontend/inject/usage-core.js"),
         include_str!("../../frontend/inject/balance-overlay.js"),
-        include_str!("../../frontend/inject/usage-badge.js"),
-        include_str!("../../frontend/inject/thread-delete.js"),
         include_str!("../../frontend/inject/context-bar.js"),
+        include_str!("../../frontend/inject/thread-delete.js"),
     ]
     .join("\n;\n")
 }
