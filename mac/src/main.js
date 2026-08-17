@@ -438,7 +438,7 @@ async function selectRoute(payload) {
   tokenVault.selectProfile(String(payload.profileId));
   refreshRoutes(true);
   postToast('令牌已切换，正在重新打开 Codex');
-  await startCodex(payload, false);
+  await startCodex(payload, true, true);
 }
 
 async function setOfficialMode(enabled) {
@@ -447,7 +447,7 @@ async function setOfficialMode(enabled) {
   tokenVault.setOfficialMode(enabled);
   refreshRoutes(true);
   postToast(enabled ? '已打开官方账号登录' : '已恢复最近使用的 API');
-  await startCodex({}, false);
+  await startCodex({}, true, true);
 }
 
 async function importCcSwitch() {
@@ -458,11 +458,15 @@ async function importCcSwitch() {
   postLog(message, 'ok');
 }
 
-async function startCodex(payload, restart) {
+async function startCodex(payload, restart, alreadyStopped = false) {
+  postStatus(restart ? '正在重启 Codex…' : '正在启动 Codex…');
+  if (!alreadyStopped) await codex.stop();
   tokenVault.ensureCurrentConfiguration();
   settings.debugPort = Number(payload.debugPort || settings.debugPort || 9230);
+  const requestedPort = settings.debugPort;
+  settings.debugPort = await codex.start({ debugPort: requestedPort, alreadyStopped: true });
+  if (settings.debugPort !== requestedPort) postLog('默认连接通道不可用，已自动选择可用通道。', 'info');
   saveSettings();
-  await codex.start({ debugPort: settings.debugPort, restart });
   postStatus('Codex 已启动');
 }
 

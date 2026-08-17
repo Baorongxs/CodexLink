@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const net = require('node:net');
 const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
@@ -34,25 +35,30 @@ class CodexService {
   async stop() {
     await this.stopInjection();
     const appPath = this.findInstall();
-    const appName = appPath ? path.basename(appPath, '.app') : 'Codex';
+    if (!appPath) return;
+    if ((await listBundleProcessIds(appPath)).length === 0) return;
     try {
-      await execFileAsync('/usr/bin/osascript', ['-e', `tell application "${appName.replace(/"/g, '\\"')}" to quit`], { timeout: 8000 });
+      const escaped = appPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      await execFileAsync('/usr/bin/osascript', ['-e', `tell application "${escaped}" to quit`], { timeout: 8000 });
     } catch (_) {}
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      if (!await isApplicationRunning(appName)) return;
-      await delay(250);
-    }
+    if (await waitForBundleExit(appPath, 3000)) return;
+    await signalBundleProcesses(appPath, 'TERM');
+    if (await waitForBundleExit(appPath, 2500)) return;
+    await signalBundleProcesses(appPath, 'KILL');
+    if (await waitForBundleExit(appPath, 2500)) return;
+    throw new Error('Codex 仍在运行，无法安全重新打开。请先退出 Codex 后重试。');
   }
 
-  async start({ debugPort = 9230, restart = false } = {}) {
+  async start({ debugPort = 9230, alreadyStopped = false } = {}) {
     const appPath = this.findInstall();
     if (!appPath) throw new Error('未找到 Codex，请先点击“安装 Codex”。');
-    this.debugPort = normalizePort(debugPort);
-    if (restart) await this.stop();
+    if (!alreadyStopped) await this.stop();
+    this.debugPort = await selectAvailableDebugPort(normalizePort(debugPort));
     this.status('正在启动 Codex…');
     await execFileAsync('/usr/bin/open', buildLaunchArgs(appPath, this.debugPort), { timeout: 10000 });
     this.log('已启动 macOS Codex，正在连接页面增强功能。', 'info');
     await this.startInjection();
+    return this.debugPort;
   }
 
   async startInjection() {
@@ -235,27 +241,99 @@ function normalizePort(value) {
 
 function buildLaunchArgs(appPath, debugPort) {
   return [
-    '-F', '-na', appPath, '--args',
+    '-a', appPath, '--args',
     `--remote-debugging-port=${normalizePort(debugPort)}`,
     '--remote-debugging-address=127.0.0.1',
     '--remote-allow-origins=*'
   ];
 }
 
-async function isApplicationRunning(appName) {
-  try {
-    const escaped = String(appName || 'Codex').replace(/"/g, '\\"');
-    const { stdout } = await execFileAsync(
-      '/usr/bin/osascript', ['-e', `application "${escaped}" is running`], { timeout: 3000 }
-    );
-    return String(stdout).trim().toLowerCase() === 'true';
-  } catch (_) {
-    return false;
+function findBundleProcessIds(processTable, appPath) {
+  const normalizedAppPath = String(appPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  const bundlePrefix = `${normalizedAppPath}/Contents/`;
+  const rows = String(processTable || '').split(/\r?\n/).map((line) => {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
+    return match ? { pid: Number(match[1]), ppid: Number(match[2]), command: match[3] } : null;
+  }).filter(Boolean);
+  const selected = new Set(rows
+    .filter((row) => {
+      const command = row.command.replace(/\\/g, '/');
+      return command.startsWith(bundlePrefix) || command.startsWith(`"${bundlePrefix}`);
+    })
+    .map((row) => row.pid));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of rows) {
+      if (selected.has(row.ppid) && !selected.has(row.pid)) {
+        selected.add(row.pid);
+        changed = true;
+      }
+    }
   }
+  return [...selected].sort((left, right) => right - left);
+}
+
+async function listBundleProcessIds(appPath) {
+  try {
+    const { stdout } = await execFileAsync(
+      '/bin/ps', ['-ww', '-axo', 'pid=,ppid=,command='], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }
+    );
+    return findBundleProcessIds(stdout, appPath);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function waitForBundleExit(appPath, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  do {
+    if ((await listBundleProcessIds(appPath)).length === 0) return true;
+    await delay(250);
+  } while (Date.now() < deadline);
+  return (await listBundleProcessIds(appPath)).length === 0;
+}
+
+async function signalBundleProcesses(appPath, signal) {
+  const ids = await listBundleProcessIds(appPath);
+  if (ids.length === 0) return;
+  try {
+    await execFileAsync('/bin/kill', [`-${signal}`, ...ids.map(String)], { timeout: 5000 });
+  } catch (_) {}
+}
+
+async function selectAvailableDebugPort(preferredPort) {
+  const preferred = normalizePort(preferredPort);
+  if (await canListen(preferred)) return preferred;
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close((error) => error ? reject(error) : resolve(port || preferred));
+    });
+  });
+}
+
+function canListen(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false));
+    server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)));
+  });
 }
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-module.exports = { CodexService, buildLaunchArgs, findPageSocket, normalizePort, selectPageTarget };
+module.exports = {
+  CodexService,
+  buildLaunchArgs,
+  findBundleProcessIds,
+  findPageSocket,
+  normalizePort,
+  selectAvailableDebugPort,
+  selectPageTarget
+};

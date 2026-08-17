@@ -1,7 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const http = require('node:http');
-const { buildLaunchArgs, findPageSocket, selectPageTarget } = require('../src/services/codex');
+const path = require('node:path');
+const {
+  buildLaunchArgs,
+  findBundleProcessIds,
+  findPageSocket,
+  selectAvailableDebugPort,
+  selectPageTarget
+} = require('../src/services/codex');
 
 test('selectPageTarget accepts the macOS app shell and ignores devtools/overlay targets', () => {
   const selected = selectPageTarget([
@@ -20,11 +28,47 @@ test('selectPageTarget rejects the ChatGPT startup error data page', () => {
   assert.equal(selected.webSocketDebuggerUrl, 'ws://codex');
 });
 
-test('macOS launch uses LaunchServices fresh mode instead of direct app executable', () => {
+test('macOS launch reopens one LaunchServices instance instead of forcing a second instance', () => {
   const args = buildLaunchArgs('/Applications/ChatGPT.app', 9230);
-  assert.deepEqual(args.slice(0, 4), ['-F', '-na', '/Applications/ChatGPT.app', '--args']);
+  assert.deepEqual(args.slice(0, 3), ['-a', '/Applications/ChatGPT.app', '--args']);
+  assert.equal(args.includes('-n'), false);
+  assert.equal(args.includes('-na'), false);
+  assert.equal(args.includes('-F'), false);
   assert.ok(args.includes('--remote-debugging-port=9230'));
   assert.equal(args.some((item) => String(item).startsWith('data:')), false);
+});
+
+test('bundle process scan includes helpers and descendants but excludes unrelated Codex CLI', () => {
+  const ids = findBundleProcessIds(`
+  100     1 /Applications/Codex.app/Contents/MacOS/ChatGPT --remote-debugging-port=9230
+  101   100 /Applications/Codex.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper
+  102   101 /usr/bin/helper-child
+  200     1 /usr/local/bin/codex
+  201     1 /Applications/Other.app/Contents/MacOS/Other /Applications/Codex.app
+  202     1 /Applications/Other.app/Contents/MacOS/Other /Applications/Codex.app/Contents/Resources/file
+  `, '/Applications/Codex.app');
+  assert.deepEqual(ids, [102, 101, 100]);
+});
+
+test('occupied debug port falls back to a free loopback port', async () => {
+  const server = http.createServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const occupied = server.address().port;
+    const selected = await selectAvailableDebugPort(occupied);
+    assert.notEqual(selected, occupied);
+    assert.ok(selected >= 1024 && selected <= 65535);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('start button and route switching both use the guarded single-instance restart flow', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+  assert.match(main, /if \(!alreadyStopped\) await codex\.stop\(\);/);
+  assert.match(main, /startCodex\(payload, true, true\)/);
+  assert.match(main, /startCodex\(\{\}, true, true\)/);
+  assert.match(main, /codex\.start\(\{ debugPort: requestedPort, alreadyStopped: true \}\)/);
 });
 
 test('findPageSocket falls back from /json/list to /json', async () => {
