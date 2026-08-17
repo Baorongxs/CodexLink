@@ -20,33 +20,55 @@ class CodexService {
     this.pending = new Map();
     this.maintainTimer = null;
     this.debugPort = 9230;
+    this.launchTarget = '';
   }
 
-  findInstall() {
+  findInstalls() {
     const candidates = [
       '/Applications/Codex.app',
       path.join(os.homedir(), 'Applications', 'Codex.app'),
       '/Applications/ChatGPT.app',
       path.join(os.homedir(), 'Applications', 'ChatGPT.app')
     ];
-    return candidates.find((candidate) => fs.existsSync(candidate)) || '';
+    return candidates.filter((candidate) => fs.existsSync(candidate));
+  }
+
+  findInstall() {
+    if (this.launchTarget && fs.existsSync(this.launchTarget)) return this.launchTarget;
+    return this.findInstalls()[0] || '';
   }
 
   async stop() {
     await this.stopInjection();
-    const appPath = this.findInstall();
-    if (!appPath) return;
-    if ((await listBundleProcessIds(appPath)).length === 0) return;
-    try {
-      const escaped = appPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      await execFileAsync('/usr/bin/osascript', ['-e', `tell application "${escaped}" to quit`], { timeout: 8000 });
-    } catch (_) {}
-    if (await waitForBundleExit(appPath, 3000)) return;
-    await signalBundleProcesses(appPath, 'TERM');
-    if (await waitForBundleExit(appPath, 2500)) return;
-    await signalBundleProcesses(appPath, 'KILL');
-    if (await waitForBundleExit(appPath, 2500)) return;
-    throw new Error('Codex 仍在运行，无法安全重新打开。请先退出 Codex 后重试。');
+    const appPaths = this.findInstalls();
+    if (appPaths.length === 0) return;
+
+    for (const appPath of appPaths) {
+      if ((await listBundleProcessIds([appPath])).length > 0) {
+        this.launchTarget = appPath;
+        break;
+      }
+    }
+
+    if ((await listBundleProcessIds(appPaths)).length > 0) {
+      // Do not ask the app to quit through Apple Events. Codex/ChatGPT can
+      // surface its fatal startup/update dialog while handling that request.
+      // Match the Windows restart contract: terminate the entire desktop tree,
+      // then verify that every installed bundle is gone before reopening it.
+      await signalBundleProcesses(appPaths, 'TERM');
+      if (!(await waitForBundleExit(appPaths, 1500))) {
+        await signalBundleProcesses(appPaths, 'KILL');
+      }
+      if (!(await waitForBundleExit(appPaths, 5000))) {
+        await signalBundleProcesses(appPaths, 'KILL');
+      }
+      if (!(await waitForBundleExit(appPaths, 2500))) {
+        throw new Error('Codex 仍在运行，无法安全重新打开。请先退出 Codex 后重试。');
+      }
+    }
+
+    clearStaleSingletonFiles();
+    await delay(1200);
   }
 
   async start({ debugPort = 9230, alreadyStopped = false } = {}) {
@@ -108,7 +130,10 @@ class CodexService {
   }
 
   buildInjectBundle() {
-    const order = ['bridge.js', 'usage-core.js', 'balance-overlay.js', 'usage-badge.js', 'thread-delete.js', 'context-bar.js'];
+    // Keep the macOS injection surface identical to Windows. Loading the old
+    // usage-core/usage-badge renderer creates a second node with the same id
+    // and can replace the current composer context percentage with stale UI.
+    const order = ['bridge.js', 'balance-overlay.js', 'context-bar.js', 'thread-delete.js'];
     return order.map((name) => fs.readFileSync(path.join(this.resourceRoot, 'inject', name), 'utf8')).join('\n;\n');
   }
 
@@ -248,9 +273,11 @@ function buildLaunchArgs(appPath, debugPort) {
   ];
 }
 
-function findBundleProcessIds(processTable, appPath) {
-  const normalizedAppPath = String(appPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
-  const bundlePrefix = `${normalizedAppPath}/Contents/`;
+function findBundleProcessIds(processTable, appPathOrPaths) {
+  const appPaths = (Array.isArray(appPathOrPaths) ? appPathOrPaths : [appPathOrPaths])
+    .map((value) => String(value || '').replace(/\\/g, '/').replace(/\/+$/, ''))
+    .filter(Boolean);
+  const bundlePrefixes = appPaths.map((appPath) => `${appPath}/Contents/`);
   const rows = String(processTable || '').split(/\r?\n/).map((line) => {
     const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
     return match ? { pid: Number(match[1]), ppid: Number(match[2]), command: match[3] } : null;
@@ -258,7 +285,7 @@ function findBundleProcessIds(processTable, appPath) {
   const selected = new Set(rows
     .filter((row) => {
       const command = row.command.replace(/\\/g, '/');
-      return command.startsWith(bundlePrefix) || command.startsWith(`"${bundlePrefix}`);
+      return bundlePrefixes.some((prefix) => command.startsWith(prefix) || command.startsWith(`"${prefix}`));
     })
     .map((row) => row.pid));
   let changed = true;
@@ -274,32 +301,42 @@ function findBundleProcessIds(processTable, appPath) {
   return [...selected].sort((left, right) => right - left);
 }
 
-async function listBundleProcessIds(appPath) {
+async function listBundleProcessIds(appPaths) {
   try {
     const { stdout } = await execFileAsync(
       '/bin/ps', ['-ww', '-axo', 'pid=,ppid=,command='], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }
     );
-    return findBundleProcessIds(stdout, appPath);
+    return findBundleProcessIds(stdout, appPaths);
   } catch (_) {
     return [];
   }
 }
 
-async function waitForBundleExit(appPath, timeoutMilliseconds) {
+async function waitForBundleExit(appPaths, timeoutMilliseconds) {
   const deadline = Date.now() + timeoutMilliseconds;
   do {
-    if ((await listBundleProcessIds(appPath)).length === 0) return true;
+    if ((await listBundleProcessIds(appPaths)).length === 0) return true;
     await delay(250);
   } while (Date.now() < deadline);
-  return (await listBundleProcessIds(appPath)).length === 0;
+  return (await listBundleProcessIds(appPaths)).length === 0;
 }
 
-async function signalBundleProcesses(appPath, signal) {
-  const ids = await listBundleProcessIds(appPath);
+async function signalBundleProcesses(appPaths, signal) {
+  const ids = await listBundleProcessIds(appPaths);
   if (ids.length === 0) return;
   try {
     await execFileAsync('/bin/kill', [`-${signal}`, ...ids.map(String)], { timeout: 5000 });
   } catch (_) {}
+}
+
+function clearStaleSingletonFiles() {
+  const roots = ['Codex', 'ChatGPT', 'com.openai.codex', 'com.openai.chat']
+    .map((name) => path.join(os.homedir(), 'Library', 'Application Support', name));
+  for (const root of roots) {
+    for (const name of ['SingletonCookie', 'SingletonLock', 'SingletonSocket']) {
+      try { fs.rmSync(path.join(root, name), { force: true }); } catch (_) {}
+    }
+  }
 }
 
 async function selectAvailableDebugPort(preferredPort) {

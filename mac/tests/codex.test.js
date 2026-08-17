@@ -50,6 +50,17 @@ test('bundle process scan includes helpers and descendants but excludes unrelate
   assert.deepEqual(ids, [102, 101, 100]);
 });
 
+test('restart scan closes both Codex and ChatGPT installations before relaunch', () => {
+  const ids = findBundleProcessIds(`
+  100     1 /Applications/Codex.app/Contents/MacOS/ChatGPT
+  101   100 /Applications/Codex.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper
+  200     1 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT
+  201   200 /Applications/ChatGPT.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper
+  300     1 /usr/local/bin/codex
+  `, ['/Applications/Codex.app', '/Applications/ChatGPT.app']);
+  assert.deepEqual(ids, [201, 200, 101, 100]);
+});
+
 test('occupied debug port falls back to a free loopback port', async () => {
   const server = http.createServer();
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -65,10 +76,22 @@ test('occupied debug port falls back to a free loopback port', async () => {
 
 test('start button and route switching both use the guarded single-instance restart flow', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+  const service = fs.readFileSync(path.join(__dirname, '..', 'src', 'services', 'codex.js'), 'utf8');
   assert.match(main, /if \(!alreadyStopped\) await codex\.stop\(\);/);
   assert.match(main, /startCodex\(payload, true, true\)/);
   assert.match(main, /startCodex\(\{\}, true, true\)/);
   assert.match(main, /codex\.start\(\{ debugPort: requestedPort, alreadyStopped: true \}\)/);
+  assert.doesNotMatch(service, /\/usr\/bin\/osascript/);
+  assert.match(service, /signalBundleProcesses\(appPaths, 'TERM'\)/);
+  assert.match(service, /signalBundleProcesses\(appPaths, 'KILL'\)/);
+  assert.match(service, /clearStaleSingletonFiles\(\)/);
+});
+
+test('macOS inject bundle matches the current Windows context percentage surface', () => {
+  const service = fs.readFileSync(path.join(__dirname, '..', 'src', 'services', 'codex.js'), 'utf8');
+  assert.match(service, /\['bridge\.js', 'balance-overlay\.js', 'context-bar\.js', 'thread-delete\.js'\]/);
+  const orderLine = service.split(/\r?\n/).find((line) => line.includes('const order =')) || '';
+  assert.doesNotMatch(orderLine, /usage-core|usage-badge/);
 });
 
 test('findPageSocket falls back from /json/list to /json', async () => {
