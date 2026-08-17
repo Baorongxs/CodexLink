@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
-    io::{Cursor, Read, Write},
+    io::{Cursor, Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
 };
 use uuid::Uuid;
@@ -264,64 +264,49 @@ impl ConversationService {
 
     pub fn read_context(&self, thread_id: &str) -> Value {
         let normalized = normalize_thread_id(thread_id);
-        if normalized.is_empty() {
-            return json!({ "ok": false, "error": "thread_missing" });
-        }
+        let mut candidates = Vec::new();
         for directory in ALLOWED_DIRS {
             let root = self.codex_home.join(directory);
             if !root.is_dir() {
                 continue;
             }
-            let found = WalkDir::new(&root)
+            candidates.extend(WalkDir::new(&root)
                 .follow_links(false)
                 .into_iter()
                 .filter_map(Result::ok)
-                .find(|entry| {
+                .filter(|entry| {
                     entry.file_type().is_file()
+                        && entry.path().extension().is_some_and(|extension| extension == "jsonl")
                         && entry
                             .file_name()
                             .to_string_lossy()
                             .to_lowercase()
                             .contains(&normalized)
-                });
-            let Some(entry) = found else {
-                continue;
-            };
-            let Ok(text) = fs::read_to_string(entry.path()) else {
-                continue;
-            };
-            for line in text.lines().rev() {
-                let Ok(data) = serde_json::from_str::<Value>(line) else {
-                    continue;
-                };
-                let usage = data
-                    .pointer("/payload/token_usage")
-                    .or_else(|| data.get("token_usage"))
-                    .or_else(|| data.get("usage"));
-                let Some(usage) = usage else {
-                    continue;
-                };
-                let used = value_u64(
-                    usage
-                        .get("total_tokens")
-                        .or_else(|| usage.get("total")),
-                );
-                let max = value_u64(
-                    usage
-                        .get("model_context_window")
-                        .or_else(|| usage.get("context_window")),
-                );
+                })
+                .map(|entry| entry.into_path()));
+        }
+        if candidates.is_empty() && !normalized.is_empty() {
+            return self.read_context("");
+        }
+        candidates.sort_by_key(|path| {
+            std::cmp::Reverse(
+                fs::metadata(path)
+                    .and_then(|metadata| metadata.modified())
+                    .ok(),
+            )
+        });
+        for path in candidates {
+            if let Some((used, limit)) = read_context_tail(&path) {
                 return json!({
                     "ok": true,
+                    "available": true,
                     "threadId": thread_id,
-                    "used": used,
-                    "max": max,
-                    "remaining": max.saturating_sub(used),
-                    "percent": if max > 0 { used as f64 * 100.0 / max as f64 } else { 0.0 }
+                    "usedTokens": used,
+                    "contextWindow": limit
                 });
             }
         }
-        json!({ "ok": false, "error": "context_not_found" })
+        json!({ "ok": true, "available": false })
     }
 
     pub fn delete_thread(&self, thread_id: &str) -> Result<Value, String> {
@@ -588,5 +573,78 @@ fn value_u64(value: Option<&Value>) -> u64 {
         Some(Value::Number(number)) => number.as_u64().unwrap_or_default(),
         Some(Value::String(text)) => text.parse().unwrap_or_default(),
         _ => 0,
+    }
+}
+
+fn read_context_tail(path: &Path) -> Option<(u64, u64)> {
+    const TAIL_BYTES: u64 = 1024 * 1024;
+    let mut file = fs::File::open(path).ok()?;
+    let length = file.metadata().ok()?.len();
+    let start = length.saturating_sub(TAIL_BYTES);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut text = String::new();
+    file.read_to_string(&mut text).ok()?;
+    let mut lines = text.lines();
+    if start > 0 {
+        lines.next();
+    }
+    lines.filter_map(parse_context_line).last()
+}
+
+fn parse_context_line(line: &str) -> Option<(u64, u64)> {
+    let data = serde_json::from_str::<Value>(line).ok()?;
+    let payload = data.get("payload").unwrap_or(&data);
+    if payload.get("type").and_then(Value::as_str) == Some("token_count") {
+        let info = payload.get("info")?;
+        let usage = info
+            .get("last_token_usage")
+            .or_else(|| info.get("total_token_usage"))?;
+        let used = value_u64(
+            usage
+                .get("total_tokens")
+                .or_else(|| usage.get("total")),
+        );
+        let limit = value_u64(
+            info.get("model_context_window")
+                .or_else(|| info.get("context_window")),
+        );
+        return (limit > 0).then_some((used, limit));
+    }
+    let usage = payload
+        .get("token_usage")
+        .or_else(|| data.get("token_usage"))
+        .or_else(|| data.get("usage"))?;
+    let used = value_u64(
+        usage
+            .get("total_tokens")
+            .or_else(|| usage.get("total")),
+    );
+    let limit = value_u64(
+        usage
+            .get("model_context_window")
+            .or_else(|| usage.get("context_window")),
+    );
+    (limit > 0).then_some((used, limit))
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::parse_context_line;
+
+    #[test]
+    fn parses_current_token_count_records() {
+        let line = r#"{"payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":24576},"model_context_window":258400}}}"#;
+        assert_eq!(parse_context_line(line), Some((24576, 258400)));
+    }
+
+    #[test]
+    fn keeps_legacy_context_records_compatible() {
+        let line = r#"{"payload":{"token_usage":{"total_tokens":1024,"model_context_window":200000}}}"#;
+        assert_eq!(parse_context_line(line), Some((1024, 200000)));
+    }
+
+    #[test]
+    fn ignores_non_usage_records() {
+        assert_eq!(parse_context_line(r#"{"payload":{"type":"message"}}"#), None);
     }
 }

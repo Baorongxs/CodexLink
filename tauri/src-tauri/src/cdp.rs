@@ -1,4 +1,4 @@
-use crate::{post_log, post_status, AppState};
+use crate::{post, post_log, post_status, AppState};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::{
@@ -256,9 +256,10 @@ pub async fn start_injection(app: &AppHandle, debug_port: u16) -> Result<(), Str
         match find_page_socket(&http, debug_port).await {
             Ok(url) => match connect_cdp(app.clone(), &url).await {
                 Ok(client) => {
-                    *state.cdp.lock().await = Some(client);
+                    *state.cdp.lock().await = Some(client.clone());
+                    spawn_injection_maintenance(app.clone(), client);
                     post_status(app, "Codex 已连接");
-                    post_log(app, "余额、上下文与对话工具已注入 Codex。", "ok");
+                    post_log(app, "已验证余额、上下文与对话工具均已挂载。", "ok");
                     return Ok(());
                 }
                 Err(error) => last_error = error,
@@ -504,29 +505,155 @@ async fn connect_cdp(app: AppHandle, url: &str) -> Result<CdpClient, String> {
         post_status(&task_app, "Codex 页面增强连接已断开");
     });
 
-    client.request("Runtime.enable", json!({})).await?;
-    client.request("Page.enable", json!({})).await?;
-    client
-        .request(
-            "Runtime.addBinding",
-            json!({ "name": "__codexLauncherBridge" }),
-        )
-        .await?;
-    let bundle = build_inject_bundle();
-    client
-        .request(
-            "Page.addScriptToEvaluateOnNewDocument",
-            json!({ "source": bundle }),
-        )
-        .await?;
-    client
-        .request(
-            "Page.reload",
-            json!({ "ignoreCache": false }),
-        )
-        .await?;
-    tokio::time::sleep(Duration::from_millis(350)).await;
+    let setup: Result<(), String> = async {
+        client.request("Runtime.enable", json!({})).await?;
+        client.request("Page.enable", json!({})).await?;
+        let _ = client.request("Network.enable", json!({})).await;
+        client
+            .request(
+                "Runtime.addBinding",
+                json!({ "name": "__codexLauncherBridge" }),
+            )
+            .await?;
+        let bundle = build_inject_bundle();
+        client
+            .request(
+                "Page.addScriptToEvaluateOnNewDocument",
+                json!({ "source": bundle.clone() }),
+            )
+            .await?;
+        wait_for_document(&client).await?;
+        evaluate_script(&client, &bundle).await?;
+        push_balance(&app, &client, false).await?;
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        evaluate_script(&client, &bundle).await?;
+        push_balance(&app, &client, false).await?;
+        verify_injection(&client).await?;
+        Ok(())
+    }
+    .await;
+    if let Err(error) = setup {
+        client.close();
+        return Err(error);
+    }
     Ok(client)
+}
+
+async fn wait_for_document(client: &CdpClient) -> Result<(), String> {
+    let mut last_error = "Codex 页面尚未就绪。".to_string();
+    for _ in 0..20 {
+        match evaluate_value(
+            client,
+            "Boolean(document && document.documentElement && (document.body || document.readyState !== 'loading'))",
+        )
+        .await
+        {
+            Ok(Value::Bool(true)) => return Ok(()),
+            Ok(_) => {}
+            Err(error) => last_error = error,
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+    Err(last_error)
+}
+
+async fn evaluate_script(client: &CdpClient, source: &str) -> Result<Value, String> {
+    evaluate_value(client, source).await
+}
+
+async fn evaluate_value(client: &CdpClient, expression: &str) -> Result<Value, String> {
+    let response = client
+        .request(
+            "Runtime.evaluate",
+            json!({
+                "expression": expression,
+                "returnByValue": true,
+                "awaitPromise": false
+            }),
+        )
+        .await?;
+    if let Some(details) = response.get("exceptionDetails") {
+        let message = details
+            .pointer("/exception/description")
+            .or_else(|| details.get("text"))
+            .and_then(Value::as_str)
+            .unwrap_or("页面脚本执行失败");
+        return Err(message.to_string());
+    }
+    Ok(response
+        .pointer("/result/value")
+        .cloned()
+        .unwrap_or(Value::Null))
+}
+
+async fn push_balance(
+    app: &AppHandle,
+    client: &CdpClient,
+    refresh: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let payload = {
+        let mut account = state.account.lock().await;
+        if refresh && account.logged_in {
+            if account.refresh_balance(&state.http).await.is_ok() {
+                post(app, account.balance_payload());
+            }
+        }
+        account.balance_payload()
+    };
+    let encoded = serde_json::to_string(&payload).map_err(|error| error.to_string())?;
+    let expression = format!(
+        "(function(s){{try{{if(s.loggedIn&&s.balanceText)window.__codexLauncherLastBalance=s.balanceText;if(typeof window.__codexLauncherRenderBalance==='function'){{window.__codexLauncherRenderBalance(s);return true;}}return false;}}catch(e){{return false;}}}})({encoded})"
+    );
+    match evaluate_value(client, &expression).await? {
+        Value::Bool(true) => Ok(()),
+        _ => Err("余额组件尚未挂载。".to_string()),
+    }
+}
+
+async fn verify_injection(client: &CdpClient) -> Result<(), String> {
+    let value = evaluate_value(
+        client,
+        "(function(){return {bridge:typeof window.__codexLauncherRequest==='function',balance:!!document.getElementById('codex-launcher-balance-overlay'),context:!!document.getElementById('codex-launcher-context-bar'),contextLoop:!!window.__codexLauncherContextLoop,threadDelete:!!window.__codexLauncherThreadDeleteInstalled};})()",
+    )
+    .await?;
+    let ready = ["bridge", "balance", "context", "contextLoop", "threadDelete"]
+        .iter()
+        .all(|key| value.get(key).and_then(Value::as_bool) == Some(true));
+    if ready {
+        Ok(())
+    } else {
+        Err(format!("页面增强挂载不完整：{value}"))
+    }
+}
+
+fn spawn_injection_maintenance(app: AppHandle, client: CdpClient) {
+    tauri::async_runtime::spawn(async move {
+        let bundle = build_inject_bundle();
+        let mut tick = 0u32;
+        let mut consecutive_failures = 0u8;
+        loop {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            tick = tick.wrapping_add(1);
+            let mut healthy = push_balance(&app, &client, tick % 10 == 0).await.is_ok();
+            if !healthy {
+                healthy = evaluate_script(&client, &bundle).await.is_ok()
+                    && push_balance(&app, &client, false).await.is_ok();
+            }
+            if tick % 2 == 0 && verify_injection(&client).await.is_err() {
+                healthy = evaluate_script(&client, &bundle).await.is_ok()
+                    && push_balance(&app, &client, false).await.is_ok();
+            }
+            if healthy {
+                consecutive_failures = 0;
+            } else {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 8 {
+                    break;
+                }
+            }
+        }
+    });
 }
 
 fn build_inject_bundle() -> String {
