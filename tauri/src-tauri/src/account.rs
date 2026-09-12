@@ -148,7 +148,7 @@ impl AccountState {
                 .request(method.clone(), endpoint)
                 .header(ACCEPT, HeaderValue::from_static("application/json"))
                 .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
-                .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.27 Tauri macOS"));
+                .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.28 Tauri macOS"));
             if authenticated && method == Method::GET {
                 request = request
                     .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
@@ -309,7 +309,7 @@ impl AccountState {
             .header(ACCEPT, HeaderValue::from_static("application/json"))
             .header("Accept-Language", HeaderValue::from_static("zh-CN,zh;q=0.9"))
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.27 Tauri macOS"))
+            .header(USER_AGENT, HeaderValue::from_static("CodexLink/1.0.28 Tauri macOS"))
             .header("Origin", base_url.clone())
             .header("Referer", format!("{base_url}/"))
             .header("Cache-Control", HeaderValue::from_static("no-cache, no-store"))
@@ -486,8 +486,8 @@ impl AccountState {
             .await
     }
 
-    pub async fn calculate_topup(&mut self, client: &Client, amount: f64) -> Result<String, String> {
-        if amount <= 0.0 {
+    pub async fn calculate_topup(&mut self, client: &Client, amount: i64) -> Result<String, String> {
+        if amount <= 0 {
             return Err("请输入有效的充值金额。".to_string());
         }
         let base_url = self.base_url.clone();
@@ -511,10 +511,10 @@ impl AccountState {
     pub async fn create_topup(
         &mut self,
         client: &Client,
-        amount: f64,
+        amount: i64,
         payment_method: &str,
     ) -> Result<(String, Value), String> {
-        if amount <= 0.0 || payment_method.trim().is_empty() {
+        if amount <= 0 || payment_method.trim().is_empty() {
             return Err("请输入充值金额并选择付款方式。".to_string());
         }
         let base_url = self.base_url.clone();
@@ -659,6 +659,14 @@ pub fn value_f64(value: Option<&Value>) -> f64 {
         Some(Value::Number(number)) => number.as_f64().unwrap_or(0.0),
         Some(Value::String(text)) => text.parse().unwrap_or(0.0),
         _ => 0.0,
+    }
+}
+
+pub fn value_i64(value: Option<&Value>) -> i64 {
+    match value {
+        Some(Value::Number(number)) => number.as_i64().unwrap_or(0),
+        Some(Value::String(text)) => text.parse().unwrap_or(0),
+        _ => 0,
     }
 }
 

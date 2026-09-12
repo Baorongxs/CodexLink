@@ -1,4 +1,4 @@
-# CodexLink macOS Tauri v1.0.27
+# CodexLink macOS Tauri v1.0.28
 
 Tauri 2 轻量版 macOS 源码，使用系统 WKWebView，支持 Apple Silicon 与 Intel 双架构。
 

@@ -131,6 +131,11 @@ for (const token of [
 ]) {
   assert.ok(account.includes(token), `Missing New API auth compatibility token: ${token}`);
 }
+assert.match(rust, /value_i64\(payload\.get\("amount"\)\)/);
+assert.doesNotMatch(rust, /value_f64\(payload\.get\("amount"\)\)/);
+assert.match(account, /calculate_topup\(&mut self, client: &Client, amount: i64\)/);
+assert.match(account, /create_topup\([\s\S]*?client: &Client,[\s\S]*?amount: i64,[\s\S]*?payment_method: &str/);
+assert.match(account, /Some\(json!\(\{ "amount": amount \}\)\)/);
 
 for (const asset of [
   "frontend/app-logo.png",

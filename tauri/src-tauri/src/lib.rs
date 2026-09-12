@@ -4,7 +4,7 @@ mod conversations;
 mod util;
 mod vault;
 
-use account::{value_f64, AccountState};
+use account::{value_f64, value_i64, AccountState};
 use cdp::{normalize_port, start_codex, stop_codex, stop_injection, CdpClient};
 use conversations::ConversationService;
 use futures_util::StreamExt;
@@ -33,7 +33,7 @@ use vault::{import_managed_tokens, VaultState};
 use uuid::Uuid;
 
 const APP_NAME: &str = "CodexLink";
-const APP_VERSION: &str = "1.0.27";
+const APP_VERSION: &str = "1.0.28";
 const RELEASE_API: &str = "https://api.github.com/repos/Baorongxs/CodexLink/releases/latest";
 const OFFICIAL_DOWNLOAD_URL: &str = "https://studio.baorongxs.top";
 const CODEX_DMG_APPLE_SILICON: &str =
@@ -207,7 +207,7 @@ async fn dispatch_action(
             Ok(())
         }
         "calculate-topup" => {
-            let amount = value_f64(payload.get("amount"));
+            let amount = value_i64(payload.get("amount"));
             let payment_method = string_field(payload, "paymentMethod", "");
             let mut account = state.account.lock().await;
             match account.calculate_topup(&state.http, amount).await {
@@ -233,7 +233,7 @@ async fn dispatch_action(
             Ok(())
         }
         "create-topup-payment" => {
-            let amount = value_f64(payload.get("amount"));
+            let amount = value_i64(payload.get("amount"));
             let payment_method = string_field(payload, "paymentMethod", "");
             let result = state
                 .account
